@@ -12,12 +12,18 @@ FROM golang:1.24 AS go-build
 WORKDIR /app
 COPY sharedLibs/go-html-to-md ./sharedLibs/go-html-to-md
 
-RUN cd sharedLibs/go-html-to-md && \
+RUN export GOPROXY=https://goproxy.io,direct && cd sharedLibs/go-html-to-md && \
     go mod download && \
     go build -o libhtml-to-markdown.so -buildmode=c-shared html-to-markdown.go
 
 FROM base AS build
 WORKDIR /app
+
+# Use Tsinghua mirror for faster apt operations
+RUN echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ trixie main contrib non-free non-free-firmware" > /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ trixie-updates main contrib non-free non-free-firmware" >> /etc/apt/sources.list && \
+    echo "deb https://mirrors.tuna.tsinghua.edu.cn/debian/ trixie-backports main contrib non-free non-free-firmware" >> /etc/apt/sources.list
+
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -27,13 +33,27 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
+ENV RUSTUP_DIST_SERVER=https://mirrors.sjtug.sjtu.edu.cn/rust-static
+ENV RUSTUP_UPDATE_ROOT=https://mirrors.sjtug.sjtu.edu.cn/rust-static/rustup
+
+
 # Install Rust
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+# RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+#     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+COPY rustup-init.sh ./rustup-init.sh
+RUN chmod +x rustup-init.sh && ./rustup-init.sh -y --no-modify-path --default-toolchain stable \
     && chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+    
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
+ENV PNPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
+# 或者直接使用 pnpm 的环境变量
+RUN echo "registry=https://registry.npmmirror.com" > .npmrc
 
 # Copy source files
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
