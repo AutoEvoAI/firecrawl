@@ -280,6 +280,9 @@ export async function logScrape(scrape: LoggedScrape, force: boolean = false) {
     );
 
     if (hasMarkdown || hasChangeTracking) {
+      // Temporarily disabled due to missing database function
+      // TODO: Create change_tracking_insert_scrape function in Supabase
+      /*
       const { error } = await supabase_service.rpc(
         "change_tracking_insert_scrape",
         {
@@ -302,6 +305,8 @@ export async function logScrape(scrape: LoggedScrape, force: boolean = false) {
       } else {
         _logger.debug("Change tracking record inserted successfully");
       }
+      */
+      _logger.debug("Change tracking temporarily disabled");
     }
   }
 }

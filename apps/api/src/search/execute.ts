@@ -15,6 +15,14 @@ import {
 } from "./scrape";
 import { trackSearchResults, trackSearchRequest } from "../lib/tracking";
 import type { BillingMetadata } from "../services/billing/types";
+import { config } from "../config";
+import {
+  getCacheKey,
+  getSearchResult,
+  setSearchResult,
+  getTTLByMode,
+} from "../lib/search-cache";
+import { aggregateResults } from "../lib/ai-search/aggregator";
 
 interface SearchOptions {
   query: string;
@@ -29,6 +37,8 @@ interface SearchOptions {
   enterprise?: ("default" | "anon" | "zdr")[];
   scrapeOptions?: ScrapeOptions;
   timeout: number;
+  aiMode?: string;
+  includeExtra?: boolean;
 }
 
 interface SearchContext {
@@ -59,7 +69,14 @@ export async function executeSearch(
   context: SearchContext,
   logger: Logger,
 ): Promise<SearchExecuteResult> {
-  const { query, limit, sources, categories, scrapeOptions } = options;
+  const {
+    query,
+    limit,
+    sources,
+    categories,
+    scrapeOptions,
+    aiMode = "false",
+  } = options;
   const {
     teamId,
     origin,
@@ -72,6 +89,42 @@ export async function executeSearch(
   } = context;
 
   const num_results_buffer = Math.floor(limit * 2);
+
+  // Cache check (skip for ZDR requests)
+  const isZDR = options.enterprise?.includes("zdr");
+  if (config.AI_SEARCH_CACHE_ENABLED && !isZDR) {
+    const cacheKey = getCacheKey(query, aiMode, {
+      limit,
+      tbs: options.tbs,
+      filter: options.filter,
+      lang: options.lang,
+      country: options.country,
+      location: options.location,
+      categories: categories as string[],
+      sources: sources.map(s => s.type),
+    });
+    const cachedResult = await getSearchResult(cacheKey);
+    if (cachedResult) {
+      try {
+        const parsedResult = JSON.parse(cachedResult) as SearchV2Response;
+        logger.info("Cache hit, returning cached search results");
+        return {
+          response: parsedResult,
+          totalResultsCount:
+            (parsedResult.web?.length || 0) +
+            (parsedResult.images?.length || 0) +
+            (parsedResult.news?.length || 0),
+          searchCredits: 0, // Cached results don't consume credits
+          scrapeCredits: 0,
+          totalCredits: 0,
+          shouldScrape: false,
+        };
+      } catch (error) {
+        logger.warn("Failed to parse cached result", { error });
+        // Continue with normal search if cache parse fails
+      }
+    }
+  }
 
   logger.info("Searching for results");
 
@@ -111,6 +164,19 @@ export async function executeSearch(
     }));
   }
 
+  // Aggregate results (deduplicate, coarse rank, prepare for reranker)
+  // Only apply aggregation when AI features are enabled
+  if (
+    aiMode !== "false" &&
+    config.AI_SEARCH_DEDUP_ENABLED &&
+    searchResponse.web
+  ) {
+    searchResponse.web = aggregateResults(
+      searchResponse.web,
+      config.AI_SEARCH_MAX_RESULTS_FOR_RERANK,
+    );
+  }
+
   let totalResultsCount = 0;
 
   if (searchResponse.web && searchResponse.web.length > 0) {
@@ -134,7 +200,6 @@ export async function executeSearch(
     totalResultsCount += searchResponse.news.length;
   }
 
-  const isZDR = options.enterprise?.includes("zdr");
   const creditsPerTenResults = isZDR ? 10 : 2;
   const searchCredits =
     Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
@@ -213,6 +278,28 @@ export async function executeSearch(
     zeroDataRetention: zeroDataRetention ?? false,
     hasScrapeFormats: shouldScrape ?? false,
   }).catch(err => logger.warn("Search tracking failed", { error: err }));
+
+  // Store result in cache (skip for ZDR requests)
+  if (config.AI_SEARCH_CACHE_ENABLED && !isZDR) {
+    try {
+      const cacheKey = getCacheKey(query, aiMode, {
+        limit,
+        tbs: options.tbs,
+        filter: options.filter,
+        lang: options.lang,
+        country: options.country,
+        location: options.location,
+        categories: categories as string[],
+        sources: sources.map(s => s.type),
+      });
+      const ttl = getTTLByMode(aiMode, options.tbs);
+      await setSearchResult(cacheKey, JSON.stringify(searchResponse), ttl);
+      logger.info("Search result stored in cache", { ttl, aiMode });
+    } catch (error) {
+      logger.warn("Failed to store search result in cache", { error });
+      // Continue even if cache storage fails
+    }
+  }
 
   return {
     response: searchResponse,

@@ -15,7 +15,7 @@ configDotenv();
 
 // SupabaseService class initializes the Supabase client conditionally based on environment variables.
 class IndexSupabaseService {
-  private client: SupabaseClient | null = null;
+  private client: any | null = null;
 
   constructor() {
     const supabaseUrl = config.INDEX_SUPABASE_URL;
@@ -26,12 +26,16 @@ class IndexSupabaseService {
       _logger.warn("Index supabase client will not be initialized.");
       this.client = null;
     } else {
-      this.client = createClient(supabaseUrl, supabaseServiceToken);
+      this.client = createClient(supabaseUrl, supabaseServiceToken, {
+        db: {
+          schema: 'index_schema'
+        }
+      });
     }
   }
 
   // Provides access to the initialized Supabase client, if available.
-  getClient(): SupabaseClient | null {
+  getClient(): any | null {
     return this.client;
   }
 }

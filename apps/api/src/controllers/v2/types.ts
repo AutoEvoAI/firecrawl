@@ -1102,6 +1102,7 @@ export type Document = {
     indexId?: string; // ID used to store the document in the index (GCS)
     concurrencyLimited?: boolean;
     concurrencyQueueDurationMs?: number;
+    browserTimeMs?: number;
     // [key: string]: string | string[] | number | { smartScrape: number; other: number; total: number } | undefined;
   };
   serpResults?: {
@@ -1710,6 +1711,11 @@ export const searchRequestSchema = z
           }, "You may only specify one screenshot format"),
       })
       .optional(),
+    aiMode: z
+      .enum(["false", "expand", "rerank", "full", "auto"])
+      .optional()
+      .default("false"),
+    includeExtra: z.boolean().optional().default(false),
     __agentInterop: z
       .object({
         auth: z.string(),

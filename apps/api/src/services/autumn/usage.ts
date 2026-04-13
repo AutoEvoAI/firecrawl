@@ -2,7 +2,7 @@ import { logger } from "../../lib/logger";
 import { supabase_rr_service } from "../supabase";
 import { autumnClient } from "./client";
 
-const CREDITS_FEATURE_ID = "CREDITS";
+const CREDITS_FEATURE_ID = "credits";
 const TOKENS_PER_CREDIT = 15;
 const HISTORICAL_RANGE = "90d";
 const HISTORICAL_BIN_SIZE = "day";
@@ -26,16 +26,24 @@ interface TeamBalance {
 // ---------------------------------------------------------------------------
 
 async function lookupOrgId(teamId: string): Promise<string> {
+  console.log("[Autumn Usage] Looking up org_id for teamId:", teamId);
   const { data, error } = await supabase_rr_service
     .from("teams")
     .select("org_id")
     .eq("id", teamId)
     .single();
 
-  if (error) throw error;
+  console.log("[Autumn Usage] Database lookup result:", { data, error });
+
+  if (error) {
+    console.error("[Autumn Usage] Database error looking up org_id:", error);
+    throw error;
+  }
   if (!data?.org_id) {
+    console.error("[Autumn Usage] Team has no org_id in database:", teamId);
     throw new Error(`Missing org_id for team ${teamId}`);
   }
+  console.log("[Autumn Usage] Found org_id:", data.org_id, "for team:", teamId);
   return data.org_id;
 }
 
@@ -188,7 +196,10 @@ async function aggregateHistoricalPeriodsByApiKeyMonth(
 export async function getTeamBalance(
   teamId: string,
 ): Promise<TeamBalance | null> {
+  console.log("[Autumn Usage] getTeamBalance called for teamId:", teamId);
+  
   if (!autumnClient) {
+    console.error("[Autumn Usage] Autumn client is not configured (AUTUMN_SECRET_KEY missing)");
     throw new Error(
       "Autumn client is not configured (AUTUMN_SECRET_KEY missing)",
     );
@@ -200,32 +211,45 @@ export async function getTeamBalance(
   let balances: Record<string, any> | undefined;
   let subscriptions: Array<any> | undefined;
 
+  console.log("[Autumn Usage] Trying entity-scoped balance for customerId:", orgId, "entityId:", teamId);
   try {
     const entity = await autumnClient.entities.get({
       customerId: orgId,
       entityId: teamId,
     });
+    console.log("[Autumn Usage] Entity response:", JSON.stringify(entity, null, 2));
     balances = entity?.balances;
     subscriptions = entity?.subscriptions;
   } catch (err: any) {
     const status = err?.statusCode ?? err?.status ?? err?.response?.status;
+    console.error("[Autumn Usage] Entity fetch failed:", {
+      status,
+      message: err.message,
+      response: err.response?.data
+    });
     if (status !== 404) throw err;
     // Entity not found — fall through to customer-level
   }
 
+  console.log("[Autumn Usage] Entity balances:", JSON.stringify(balances, null, 2));
+
   // Fall back to customer-level balance if CREDITS feature not present
   if (!balances?.[CREDITS_FEATURE_ID]) {
+    console.log("[Autumn Usage] CREDITS feature not found in entity balances, falling back to customer-level");
     const customer = await autumnClient.customers.getOrCreate({
       customerId: orgId,
       autoEnablePlanId: "free",
     });
+    console.log("[Autumn Usage] Customer response:", JSON.stringify(customer, null, 2));
     balances = customer?.balances;
     subscriptions = customer?.subscriptions;
   }
 
   const creditBalance = balances?.[CREDITS_FEATURE_ID];
+  console.log("[Autumn Usage] Credit balance:", JSON.stringify(creditBalance, null, 2));
 
   if (!creditBalance) {
+    console.warn("[Autumn Usage] No credit balance found for teamId:", teamId);
     return null;
   }
 

@@ -1,5 +1,6 @@
 import type { Action } from "../controllers/v1/types";
 import type { BrandingProfile } from "../types/branding";
+import type { SearXNGExtra } from "./ai-search/result-parser";
 
 export type PageOptions = {
   includeMarkdown?: boolean;
@@ -148,6 +149,11 @@ export interface WebSearchResult {
   description: string;
   position?: number;
   category?: string;
+  // SearXNG metadata (for internal use in reranking/aggregation)
+  searxngScore?: number;
+  engines?: string[];
+  publishedDate?: string;
+  author?: string;
   // Scraped content fields
   markdown?: string;
   html?: string;
@@ -160,10 +166,22 @@ export interface WebSearchResult {
 
 export type SearchResultType = "web" | "images" | "news";
 
+export interface AIMetadata {
+  aiMode?: string;
+  processingTime?: number;
+  phaseTimes?: Record<string, number>;
+  cacheHit?: boolean;
+  expandedQuery?: string;
+  intent?: string;
+  reranked?: boolean;
+}
+
 export interface SearchV2Response {
   web?: WebSearchResult[];
   images?: ImageSearchResult[];
   news?: NewsSearchResult[];
+  extra?: SearXNGExtra;
+  aiMetadata?: AIMetadata;
 }
 
 export interface ScrapeActionContent {

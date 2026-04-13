@@ -8,12 +8,18 @@ import {
   scrapeURLWithFireEngineTLSClient,
 } from "./fire-engine";
 import { pdfMaxReasonableTime, scrapePDF } from "./pdf";
-import { fetchMaxReasonableTime, scrapeURLWithFetch } from "./fetch";
+import { fetchMaxReasonableTime, scrapeURLWithFetch, scrapeURLWithFetchStealth } from "./fetch";
 import {
   playwrightMaxReasonableTime,
   scrapeURLWithPlaywright,
+  scrapeURLWithPlaywrightStealth,
 } from "./playwright";
 import { indexMaxReasonableTime, scrapeURLWithIndex } from "./index/index";
+import {
+  scrapeURLWithOpenSandbox,
+  scrapeURLWithOpenSandboxStealth,
+  opensandboxMaxReasonableTime,
+} from "./opensandbox";
 import {
   scrapeURLWithWikipedia,
   wikipediaMaxReasonableTime,
@@ -34,7 +40,11 @@ export type Engine =
   | "fire-engine;tlsclient"
   | "fire-engine;tlsclient;stealth"
   | "playwright"
+  | "playwright;stealth"
   | "fetch"
+  | "fetch;stealth"
+  | "opensandbox"
+  | "opensandbox;stealth"
   | "pdf"
   | "document"
   | "index"
@@ -52,6 +62,12 @@ const useWikipedia =
   config.WIKIPEDIA_ENTERPRISE_USERNAME !== "" &&
   config.WIKIPEDIA_ENTERPRISE_PASSWORD !== undefined &&
   config.WIKIPEDIA_ENTERPRISE_PASSWORD !== "";
+const useSelfHostedStealth =
+  config.PROXY_STEALTH_SERVER !== "" &&
+  config.PROXY_STEALTH_SERVER !== undefined;
+const useOpenSandbox =
+  config.OPENSANDBOX_URL !== "" &&
+  config.OPENSANDBOX_URL !== undefined;
 
 const engines: Engine[] = [
   ...(useWikipedia ? ["wikipedia" as const] : []),
@@ -67,7 +83,15 @@ const engines: Engine[] = [
       ]
     : []),
   ...(usePlaywright ? ["playwright" as const] : []),
+  ...(useSelfHostedStealth && usePlaywright
+    ? ["playwright;stealth" as const]
+    : []),
   "fetch",
+  ...(useSelfHostedStealth ? ["fetch;stealth" as const] : []),
+  ...(useOpenSandbox ? ["opensandbox" as const] : []),
+  ...(useOpenSandbox && useSelfHostedStealth
+    ? ["opensandbox;stealth" as const]
+    : []),
   "pdf",
   "document",
 ];
@@ -132,6 +156,7 @@ export type EngineScrapeResult = {
   };
 
   branding?: BrandingProfile;
+  browserTimeMs?: number;
 
   pdfMetadata?: PdfMetadata;
 
@@ -160,7 +185,11 @@ const engineHandlers: {
   "fire-engine;tlsclient": scrapeURLWithFireEngineTLSClient,
   "fire-engine;tlsclient;stealth": scrapeURLWithFireEngineTLSClient,
   playwright: scrapeURLWithPlaywright,
+  "playwright;stealth": scrapeURLWithPlaywrightStealth,
   fetch: scrapeURLWithFetch,
+  "fetch;stealth": scrapeURLWithFetchStealth,
+  opensandbox: scrapeURLWithOpenSandbox,
+  "opensandbox;stealth": scrapeURLWithOpenSandboxStealth,
   pdf: scrapePDF,
   document: scrapeDocument,
   wikipedia: scrapeURLWithWikipedia,
@@ -184,7 +213,11 @@ const engineMRTs: {
   "fire-engine;tlsclient;stealth": meta =>
     fireEngineMaxReasonableTime(meta, "tlsclient"),
   playwright: playwrightMaxReasonableTime,
+  "playwright;stealth": playwrightMaxReasonableTime,
   fetch: fetchMaxReasonableTime,
+  "fetch;stealth": fetchMaxReasonableTime,
+  opensandbox: opensandboxMaxReasonableTime,
+  "opensandbox;stealth": opensandboxMaxReasonableTime,
   pdf: pdfMaxReasonableTime,
   document: documentMaxReasonableTime,
   wikipedia: wikipediaMaxReasonableTime,
@@ -333,6 +366,25 @@ const engineOptions: {
     },
     quality: 20,
   },
+  "playwright;stealth": {
+    features: {
+      actions: false,
+      waitFor: true,
+      screenshot: false,
+      "screenshot@fullScreen": false,
+      pdf: false,
+      document: false,
+      atsv: false,
+      location: false,
+      mobile: false,
+      skipTlsVerification: true,
+      useFastMode: false,
+      stealthProxy: true,
+      branding: false,
+      disableAdblock: false,
+    },
+    quality: -2,
+  },
   "fire-engine;tlsclient": {
     features: {
       actions: false,
@@ -389,6 +441,63 @@ const engineOptions: {
       disableAdblock: false,
     },
     quality: 5,
+  },
+  "fetch;stealth": {
+    features: {
+      actions: false,
+      waitFor: false,
+      screenshot: false,
+      "screenshot@fullScreen": false,
+      pdf: false,
+      document: false,
+      atsv: false,
+      location: false,
+      mobile: false,
+      skipTlsVerification: true,
+      useFastMode: true,
+      stealthProxy: true,
+      branding: false,
+      disableAdblock: false,
+    },
+    quality: -3,
+  },
+  opensandbox: {
+    features: {
+      actions: true,
+      waitFor: true,
+      screenshot: true,
+      "screenshot@fullScreen": true,
+      pdf: false,
+      document: false,
+      atsv: false,
+      location: false,
+      mobile: true,
+      skipTlsVerification: true,
+      useFastMode: false,
+      stealthProxy: false,
+      branding: false,
+      disableAdblock: false,
+    },
+    quality: 30,
+  },
+  "opensandbox;stealth": {
+    features: {
+      actions: true,
+      waitFor: true,
+      screenshot: true,
+      "screenshot@fullScreen": true,
+      pdf: false,
+      document: false,
+      atsv: false,
+      location: false,
+      mobile: true,
+      skipTlsVerification: true,
+      useFastMode: false,
+      stealthProxy: true,
+      branding: false,
+      disableAdblock: false,
+    },
+    quality: -4,
   },
   pdf: {
     features: {

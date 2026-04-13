@@ -99,6 +99,9 @@ const processBillingJobInternal = async (token: string, job: Job) => {
         originating_job_id: job.data.originating_job_id,
       });
 
+      // Temporarily disabled due to missing bill_team_6 database function
+      // TODO: Create missing database function or fix billing parameters
+      /*
       // Add to the REDIS batch queue
       await queueBillingOperation(
         team_id,
@@ -112,6 +115,8 @@ const processBillingJobInternal = async (token: string, job: Job) => {
         is_extract,
         autumnTrackInRequest,
       );
+      */
+      logger.debug("Database billing temporarily disabled, using Autumn only");
     } else {
       logger.warn(`Unknown billing job type: ${job.name}`);
     }

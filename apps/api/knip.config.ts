@@ -15,7 +15,7 @@ const config: KnipConfig = {
     "src/services/billing/issue_credits.ts",
     "src/services/billing/stripe.ts",
   ],
-  ignoreDependencies: ["openai", "undici-types", "stripe"],
+  ignoreDependencies: ["openai", "undici-types"],
 };
 
 export default config;

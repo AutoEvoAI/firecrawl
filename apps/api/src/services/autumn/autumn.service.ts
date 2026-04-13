@@ -16,8 +16,8 @@ import type {
   TrackParams,
 } from "./types";
 
-const TEAM_FEATURE_ID = "TEAM";
-const CREDITS_FEATURE_ID = "CREDITS";
+const TEAM_FEATURE_ID = "team";
+const CREDITS_FEATURE_ID = "credits";
 
 /**
  * Org IDs that always have Autumn enabled, regardless of experiment
@@ -57,10 +57,38 @@ export function orgBucket(orgId: string): number {
  * `ensureTeamProvisioned`.
  */
 export function isAutumnEnabled(orgId?: string): boolean {
-  if (orgId && AUTUMN_BYPASS_ORG_IDS.has(orgId)) return true;
-  if (config.AUTUMN_EXPERIMENT !== "true") return false;
-  if (!orgId || config.AUTUMN_EXPERIMENT_PERCENT >= 100) return true;
-  return orgBucket(orgId) < config.AUTUMN_EXPERIMENT_PERCENT;
+  logger.debug("[isAutumnEnabled] Called", { 
+    orgId, 
+    AUTUMN_EXPERIMENT: config.AUTUMN_EXPERIMENT,
+    AUTUMN_EXPERIMENT_PERCENT: config.AUTUMN_EXPERIMENT_PERCENT,
+    inBypassList: orgId ? AUTUMN_BYPASS_ORG_IDS.has(orgId) : false
+  });
+  if (orgId && AUTUMN_BYPASS_ORG_IDS.has(orgId)) {
+    logger.debug("[isAutumnEnabled] In bypass list, returning true");
+    return true;
+  }
+  if (config.AUTUMN_EXPERIMENT !== "true") {
+    logger.warn("[isAutumnEnabled] AUTUMN_EXPERIMENT is not 'true', returning false", { 
+      AUTUMN_EXPERIMENT: config.AUTUMN_EXPERIMENT 
+    });
+    return false;
+  }
+  if (!orgId || config.AUTUMN_EXPERIMENT_PERCENT >= 100) {
+    logger.debug("[isAutumnEnabled] Percent >= 100 or no orgId, returning true", {
+      orgId,
+      AUTUMN_EXPERIMENT_PERCENT: config.AUTUMN_EXPERIMENT_PERCENT
+    });
+    return true;
+  }
+  const bucket = orgBucket(orgId);
+  const result = bucket < config.AUTUMN_EXPERIMENT_PERCENT;
+  logger.debug("[isAutumnEnabled] Bucket check", {
+    orgId,
+    bucket,
+    AUTUMN_EXPERIMENT_PERCENT: config.AUTUMN_EXPERIMENT_PERCENT,
+    result
+  });
+  return result;
 }
 
 export function isAutumnCheckEnabled(orgId?: string): boolean {
@@ -81,13 +109,43 @@ export function isAutumnCheckDryRun(): boolean {
 }
 
 export function isAutumnRequestTrackEnabled(orgId?: string): boolean {
-  if (orgId && AUTUMN_BYPASS_ORG_IDS.has(orgId)) return true;
-  if (config.AUTUMN_REQUEST_TRACK_EXPERIMENT !== "true") return false;
-  if (!isAutumnEnabled(orgId)) return false;
-  if (!orgId || config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT >= 100) {
+  logger.debug("[isAutumnRequestTrackEnabled] Called", { 
+    orgId, 
+    AUTUMN_REQUEST_TRACK_EXPERIMENT: config.AUTUMN_REQUEST_TRACK_EXPERIMENT,
+    AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT,
+    inBypassList: orgId ? AUTUMN_BYPASS_ORG_IDS.has(orgId) : false
+  });
+  if (orgId && AUTUMN_BYPASS_ORG_IDS.has(orgId)) {
+    logger.debug("[isAutumnRequestTrackEnabled] In bypass list, returning true");
     return true;
   }
-  return orgBucket(orgId) < config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT;
+  if (config.AUTUMN_REQUEST_TRACK_EXPERIMENT !== "true") {
+    logger.warn("[isAutumnRequestTrackEnabled] AUTUMN_REQUEST_TRACK_EXPERIMENT is not 'true', returning false", { 
+      AUTUMN_REQUEST_TRACK_EXPERIMENT: config.AUTUMN_REQUEST_TRACK_EXPERIMENT 
+    });
+    return false;
+  }
+  const autumnEnabled = isAutumnEnabled(orgId);
+  if (!autumnEnabled) {
+    logger.warn("[isAutumnRequestTrackEnabled] isAutumnEnabled returned false, returning false");
+    return false;
+  }
+  if (!orgId || config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT >= 100) {
+    logger.debug("[isAutumnRequestTrackEnabled] Percent >= 100 or no orgId, returning true", {
+      orgId,
+      AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT
+    });
+    return true;
+  }
+  const bucket = orgBucket(orgId);
+  const result = bucket < config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT;
+  logger.debug("[isAutumnRequestTrackEnabled] Bucket check", {
+    orgId,
+    bucket,
+    AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT: config.AUTUMN_REQUEST_TRACK_EXPERIMENT_PERCENT,
+    result
+  });
+  return result;
 }
 
 const AUTUMN_DEFAULT_PLAN_ID = "free";
@@ -550,25 +608,51 @@ export class AutumnService {
     properties,
     requestScoped = false,
   }: TrackCreditsParams): Promise<boolean> {
+    logger.debug("[Autumn trackCredits] Called", { teamId, value, requestScoped });
     const isEnabled = requestScoped
       ? isAutumnRequestTrackEnabled
       : isAutumnEnabled;
-    if (!isEnabled()) return false;
-    if (!autumnClient) return false;
-    if (this.isPreviewTeam(teamId)) return false;
+    logger.debug("[Autumn trackCredits] isEnabled check", { 
+      requestScoped, 
+      isEnabled: isEnabled() 
+    });
+    if (!isEnabled()) {
+      logger.warn("[Autumn trackCredits] Disabled, returning false");
+      return false;
+    }
+    if (!autumnClient) {
+      logger.warn("[Autumn trackCredits] No autumn client, returning false");
+      return false;
+    }
+    if (this.isPreviewTeam(teamId)) {
+      logger.warn("[Autumn trackCredits] Preview team, returning false");
+      return false;
+    }
 
     try {
       const orgId = await this.resolveOrgId(teamId);
-      if (!isEnabled(orgId)) return false;
+      logger.debug("[Autumn trackCredits] Resolved orgId", { orgId });
+      if (!isEnabled(orgId)) {
+        logger.warn("[Autumn trackCredits] Not enabled for org, returning false", { orgId });
+        return false;
+      }
 
       const customerId = await this.ensureTrackingContext(teamId);
-      return await this.track({
+      logger.debug("[Autumn trackCredits] Ensured tracking context", { customerId });
+      const result = await this.track({
         customerId,
         entityId: teamId,
         featureId: CREDITS_FEATURE_ID,
         value,
         properties,
       });
+      logger.debug("[Autumn trackCredits] Track result", { 
+        result,
+        success: result === true,
+        value,
+        featureId: CREDITS_FEATURE_ID
+      });
+      return result;
     } catch (error) {
       logger.error(
         "Autumn trackCredits failed — billing API may be unavailable",

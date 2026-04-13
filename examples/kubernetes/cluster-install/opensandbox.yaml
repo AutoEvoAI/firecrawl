@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-config
+data:
+  PORT: "8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensandbox
+  template:
+    metadata:
+      labels:
+        app: opensandbox
+    spec:
+      containers:
+        - name: opensandbox
+          image: alibaba/opensandbox:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: opensandbox-config
+            - secretRef:
+                name: opensandbox-secret
+          resources:
+            requests:
+              cpu: "1.0"
+              memory: "2Gi"
+            limits:
+              cpu: "2.0"
+              memory: "4Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensandbox
+spec:
+  selector:
+    app: opensandbox
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080

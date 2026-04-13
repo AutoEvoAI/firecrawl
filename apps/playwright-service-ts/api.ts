@@ -21,6 +21,9 @@ const DNS_CACHE_TTL_MS = 30_000;
 const PROXY_SERVER = process.env.PROXY_SERVER || null;
 const PROXY_USERNAME = process.env.PROXY_USERNAME || null;
 const PROXY_PASSWORD = process.env.PROXY_PASSWORD || null;
+const PROXY_STEALTH_SERVER = process.env.PROXY_STEALTH_SERVER || null;
+const PROXY_STEALTH_USERNAME = process.env.PROXY_STEALTH_USERNAME || null;
+const PROXY_STEALTH_PASSWORD = process.env.PROXY_STEALTH_PASSWORD || null;
 const dnsLookupCache = new Map<string, { addresses: string[]; expiresAt: number }>();
 
 class InsecureConnectionError extends Error {
@@ -178,6 +181,7 @@ interface UrlModel {
   headers?: { [key: string]: string };
   check_selector?: string;
   skip_tls_verification?: boolean;
+  proxy_type?: "basic" | "stealth";
 }
 
 let browser: Browser;
@@ -197,7 +201,7 @@ const initializeBrowser = async () => {
   });
 };
 
-const createContext = async (skipTlsVerification: boolean = false): Promise<{ context: BrowserContext; securityState: ContextSecurityState }> => {
+const createContext = async (skipTlsVerification: boolean = false, proxyType: "basic" | "stealth" = "basic"): Promise<{ context: BrowserContext; securityState: ContextSecurityState }> => {
   const userAgent = new UserAgent().toString();
   const viewport = { width: 1280, height: 800 };
   const securityState: ContextSecurityState = {
@@ -211,15 +215,26 @@ const createContext = async (skipTlsVerification: boolean = false): Promise<{ co
     serviceWorkers: 'block',
   };
 
-  if (PROXY_SERVER && PROXY_USERNAME && PROXY_PASSWORD) {
+  // Select proxy configuration based on proxyType
+  let proxyServer = PROXY_SERVER;
+  let proxyUsername = PROXY_USERNAME;
+  let proxyPassword = PROXY_PASSWORD;
+
+  if (proxyType === "stealth" && PROXY_STEALTH_SERVER) {
+    proxyServer = PROXY_STEALTH_SERVER;
+    proxyUsername = PROXY_STEALTH_USERNAME;
+    proxyPassword = PROXY_STEALTH_PASSWORD;
+  }
+
+  if (proxyServer && proxyUsername && proxyPassword) {
     contextOptions.proxy = {
-      server: PROXY_SERVER,
-      username: PROXY_USERNAME,
-      password: PROXY_PASSWORD,
+      server: proxyServer,
+      username: proxyUsername,
+      password: proxyPassword,
     };
-  } else if (PROXY_SERVER) {
+  } else if (proxyServer) {
     contextOptions.proxy = {
-      server: PROXY_SERVER,
+      server: proxyServer,
     };
   }
 
@@ -354,7 +369,7 @@ app.get('/health', async (req: Request, res: Response) => {
 });
 
 app.post('/scrape', async (req: Request, res: Response) => {
-  const { url, wait_after_load = 0, timeout = 15000, headers, check_selector, skip_tls_verification = false }: UrlModel = req.body;
+  const { url, wait_after_load = 0, timeout = 15000, headers, check_selector, skip_tls_verification = false, proxy_type = "basic" }: UrlModel = req.body;
 
   console.log(`================= Scrape Request =================`);
   console.log(`URL: ${url}`);
@@ -401,7 +416,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
   let page: Page | null = null;
 
   try {
-    const contextBundle = await createContext(skip_tls_verification);
+    const contextBundle = await createContext(skip_tls_verification, proxy_type);
     requestContext = contextBundle.context;
     securityState = contextBundle.securityState;
     page = await requestContext.newPage();

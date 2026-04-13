@@ -11,7 +11,10 @@ import {
 import { Writable } from "stream";
 import { v7 as uuid } from "uuid";
 import * as undici from "undici";
-import { getSecureDispatcher } from "./safeFetch";
+import {
+  getSecureDispatcher,
+  getStealthDispatcher,
+} from "./safeFetch";
 import { logger } from "../../../../lib/logger";
 
 const mapUndiciError = (url: string, skipTlsVerification: boolean, e: any) => {
@@ -60,6 +63,7 @@ export async function fetchFileToBuffer(
   url: string,
   skipTlsVerification: boolean = false,
   init?: undici.RequestInit,
+  useStealth: boolean = false,
 ): Promise<{
   response: undici.Response;
   buffer: Buffer;
@@ -68,7 +72,9 @@ export async function fetchFileToBuffer(
     const response = await undici.fetch(url, {
       ...init,
       redirect: "follow",
-      dispatcher: getSecureDispatcher(skipTlsVerification),
+      dispatcher: useStealth
+        ? getStealthDispatcher(skipTlsVerification)
+        : getSecureDispatcher(skipTlsVerification),
     });
     return {
       response,
@@ -84,6 +90,7 @@ export async function downloadFile(
   url: string,
   skipTlsVerification: boolean = false,
   init?: undici.RequestInit,
+  useStealth: boolean = false,
 ): Promise<{
   response: undici.Response;
   tempFilePath: string;
@@ -97,7 +104,9 @@ export async function downloadFile(
     const response = await undici.fetch(url, {
       ...init,
       redirect: "follow",
-      dispatcher: getSecureDispatcher(skipTlsVerification),
+      dispatcher: useStealth
+        ? getStealthDispatcher(skipTlsVerification)
+        : getSecureDispatcher(skipTlsVerification),
     });
 
     // This should never happen in the current state of JS/Undici (2024), but let's check anyways.

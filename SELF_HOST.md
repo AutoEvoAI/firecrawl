@@ -85,6 +85,12 @@ USE_DB_AUTHENTICATION=false
 # SUPABASE_URL=
 # SUPABASE_SERVICE_TOKEN=
 
+# Supabase Index Setup (optional, for search indexing features)
+# Note: Supabase JS client does not support specifying schemas via URL parameters
+# Configure schemas through Supabase Dashboard or SQL commands
+# INDEX_SUPABASE_URL=
+# INDEX_SUPABASE_SERVICE_TOKEN=
+
 # Use if you've set up authentication and want to test with a real API key
 # TEST_API_KEY=
 

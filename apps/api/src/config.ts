@@ -125,6 +125,34 @@ const configSchema = z.object({
   SEARCH_INDEX_SAMPLE_RATE: z.coerce.number().default(0.1),
   ENABLE_SEARCH_INDEX: z.stringbool().optional(),
 
+  // AI Search Cache
+  AI_SEARCH_CACHE_ENABLED: z.stringbool().default(true),
+  AI_SEARCH_CACHE_TTL_NON_AI: z.coerce.number().default(3600),
+  AI_SEARCH_CACHE_TTL_AI: z.coerce.number().default(300),
+  AI_SEARCH_CACHE_TTL_FULL: z.coerce.number().default(180),
+
+  // AI Search Dispatcher
+  AI_SEARCH_DEFAULT_ENGINES: z.string().optional(),
+  AI_SEARCH_DEFAULT_CATEGORIES: z.string().optional(),
+  AI_SEARCH_TIME_RANGE_ENABLED: z.stringbool().default(true),
+  AI_SEARCH_SAFESEARCH: z.string().default("moderate"),
+
+  // AI Search Aggregator
+  AI_SEARCH_MAX_RESULTS_FOR_RERANK: z.coerce.number().default(50),
+  AI_SEARCH_DEDUP_ENABLED: z.stringbool().default(true),
+
+  // AI Search Preprocessor
+  AI_SEARCH_LLM_MODEL: z.string().default("gpt-4o-mini"),
+  AI_SEARCH_LLM_API_KEY: z.string().optional(),
+  AI_SEARCH_LLM_BASE_URL: z.string().optional(),
+
+  // AI Search Reranker
+  AI_SEARCH_EMBEDDING_MODEL: z.string().default("bge-reranker-v2-m3"),
+  AI_SEARCH_EMBEDDING_API_KEY: z.string().optional(),
+  AI_SEARCH_EMBEDDING_BASE_URL: z.string().optional(),
+  AI_SEARCH_EMBEDDING_TOP_K: z.coerce.number().default(20),
+  AI_SEARCH_LLM_TOP_K: z.coerce.number().default(10),
+
   // Worker Configuration
   WORKER_PORT: z.coerce.number().default(3005),
   NUQ_WORKER_PORT: z.coerce.number().default(3000).catch(3000), // todo: investigate why .catch is needed
@@ -150,6 +178,12 @@ const configSchema = z.object({
   PROXY_SERVER: z.string().optional(),
   PROXY_USERNAME: z.string().optional(),
   PROXY_PASSWORD: z.string().optional(),
+  PROXY_STEALTH_SERVER: z.string().optional(),
+  PROXY_STEALTH_USERNAME: z.string().optional(),
+  PROXY_STEALTH_PASSWORD: z.string().optional(),
+  OPENSANDBOX_URL: z.string().optional(),
+  OPENSANDBOX_API_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
   // External Services
   PLAYWRIGHT_MICROSERVICE_URL: z.string().optional(),

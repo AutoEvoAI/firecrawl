@@ -19,6 +19,7 @@ export async function scrapeURLWithPlaywright(
       timeout: meta.abort.scrapeTimeout(),
       headers: meta.options.headers,
       skip_tls_verification: meta.options.skipTlsVerification,
+      proxy_type: "basic",
     },
     method: "POST",
     logger: meta.logger.child("scrapeURLWithPlaywright/robustFetch"),
@@ -44,6 +45,49 @@ export async function scrapeURLWithPlaywright(
     contentType: response.contentType,
 
     proxyUsed: "basic",
+  };
+}
+
+export async function scrapeURLWithPlaywrightStealth(
+  meta: Meta,
+): Promise<EngineScrapeResult> {
+  const response = await robustFetch({
+    url: config.PLAYWRIGHT_MICROSERVICE_URL!,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: {
+      url: meta.rewrittenUrl ?? meta.url,
+      wait_after_load: meta.options.waitFor,
+      timeout: meta.abort.scrapeTimeout(),
+      headers: meta.options.headers,
+      skip_tls_verification: meta.options.skipTlsVerification,
+      proxy_type: "stealth",
+    },
+    method: "POST",
+    logger: meta.logger.child("scrapeURLWithPlaywrightStealth/robustFetch"),
+    schema: z.object({
+      content: z.string(),
+      pageStatusCode: z.number(),
+      pageError: z.string().optional(),
+      contentType: z.string().optional(),
+    }),
+    mock: meta.mock,
+    abort: meta.abort.asSignal(),
+  });
+
+  if (response.contentType?.includes("application/json")) {
+    response.content = await getInnerJson(response.content);
+  }
+
+  return {
+    url: meta.rewrittenUrl ?? meta.url, // TODO: impove redirect following
+    html: response.content,
+    statusCode: response.pageStatusCode,
+    error: response.pageError,
+    contentType: response.contentType,
+
+    proxyUsed: "stealth",
   };
 }
 

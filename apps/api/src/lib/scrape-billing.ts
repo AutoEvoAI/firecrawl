@@ -96,6 +96,11 @@ export async function calculateCreditsToBeBilled(
     creditsToBeBilled += stealthProxyCostBonus;
   }
 
+  if (document?.metadata?.browserTimeMs && document.metadata.browserTimeMs > 0) {
+    const browserMinutes = Math.ceil(document.metadata.browserTimeMs / 60000);
+    creditsToBeBilled += 2 * browserMinutes; // 2 credits per browser minute
+  }
+
   const urlsToCheck = [
     document.metadata?.url,
     document.metadata?.sourceURL,

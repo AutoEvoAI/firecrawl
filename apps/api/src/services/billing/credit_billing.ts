@@ -38,6 +38,9 @@ export async function billTeam(
         requestScoped: true,
       });
 
+      // Temporarily disable database billing fallback due to missing bill_team_6 function
+      // TODO: Create missing database function or fix billing parameters
+      /*
       const result = await queueBillingOperation(
         team_id,
         subscription_id,
@@ -57,6 +60,12 @@ export async function billTeam(
       }
 
       return result;
+      */
+
+      // Return success if Autumn tracking succeeded
+      return trackedInRequest 
+        ? { success: true, message: "Billed via Autumn" }
+        : { success: false, message: "Autumn tracking failed" };
     },
     { success: true, message: "No DB, bypassed." },
   )(team_id, subscription_id, credits, api_key_id, billing, logger);

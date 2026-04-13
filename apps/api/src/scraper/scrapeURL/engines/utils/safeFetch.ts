@@ -19,14 +19,23 @@ export function isIPPrivate(address: string): boolean {
   return addr.range() !== "unicast";
 }
 
-function createBaseAgent(skipTlsVerification: boolean) {
-  const baseAgent = config.PROXY_SERVER
+type ProxyConfig = {
+  server?: string;
+  username?: string;
+  password?: string;
+};
+
+function createBaseAgent(
+  skipTlsVerification: boolean,
+  proxyConfig: ProxyConfig,
+) {
+  const baseAgent = proxyConfig.server
     ? new undici.ProxyAgent({
-        uri: config.PROXY_SERVER.includes("://")
-          ? config.PROXY_SERVER
-          : "http://" + config.PROXY_SERVER,
-        token: config.PROXY_USERNAME
-          ? `Basic ${Buffer.from(config.PROXY_USERNAME + ":" + (config.PROXY_PASSWORD ?? "")).toString("base64")}`
+        uri: proxyConfig.server.includes("://")
+          ? proxyConfig.server
+          : "http://" + proxyConfig.server,
+        token: proxyConfig.username
+          ? `Basic ${Buffer.from(proxyConfig.username + ":" + (proxyConfig.password ?? "")).toString("base64")}`
           : undefined,
         requestTls: {
           rejectUnauthorized: !skipTlsVerification, // Only bypass SSL verification if explicitly requested
@@ -61,8 +70,11 @@ function attachSecurityCheck(agent: undici.Dispatcher) {
 }
 
 // Dispatcher WITH cookie handling (for scraping - needs cookies for auth flows)
-function makeSecureDispatcher(skipTlsVerification: boolean) {
-  const baseAgent = createBaseAgent(skipTlsVerification);
+function makeSecureDispatcher(
+  skipTlsVerification: boolean,
+  proxyConfig: ProxyConfig,
+) {
+  const baseAgent = createBaseAgent(skipTlsVerification, proxyConfig);
   const cookieJar = new CookieJar();
   const agent = baseAgent.compose(cookie({ jar: cookieJar }));
   attachSecurityCheck(agent);
@@ -70,17 +82,54 @@ function makeSecureDispatcher(skipTlsVerification: boolean) {
 }
 
 // Dispatcher WITHOUT cookie handling (for webhooks - avoids empty cookie header bug)
-function makeSecureDispatcherNoCookies(skipTlsVerification: boolean) {
-  const agent = createBaseAgent(skipTlsVerification);
+function makeSecureDispatcherNoCookies(
+  skipTlsVerification: boolean,
+  proxyConfig: ProxyConfig,
+) {
+  const agent = createBaseAgent(skipTlsVerification, proxyConfig);
   attachSecurityCheck(agent);
   return agent;
 }
 
-const secureDispatcher = makeSecureDispatcher(false);
-const secureDispatcherSkipTlsVerification = makeSecureDispatcher(true);
-const secureDispatcherNoCookies = makeSecureDispatcherNoCookies(false);
+// Basic proxy configuration
+const basicProxyConfig: ProxyConfig = {
+  server: config.PROXY_SERVER,
+  username: config.PROXY_USERNAME,
+  password: config.PROXY_PASSWORD,
+};
+
+// Stealth proxy configuration (fallback to basic if not configured)
+const stealthProxyConfig: ProxyConfig = {
+  server: config.PROXY_STEALTH_SERVER || config.PROXY_SERVER,
+  username: config.PROXY_STEALTH_USERNAME || config.PROXY_USERNAME,
+  password: config.PROXY_STEALTH_PASSWORD || config.PROXY_PASSWORD,
+};
+
+// Basic proxy dispatchers (existing)
+const secureDispatcher = makeSecureDispatcher(false, basicProxyConfig);
+const secureDispatcherSkipTlsVerification = makeSecureDispatcher(
+  true,
+  basicProxyConfig,
+);
+const secureDispatcherNoCookies = makeSecureDispatcherNoCookies(
+  false,
+  basicProxyConfig,
+);
 const secureDispatcherNoCookiesSkipTlsVerification =
-  makeSecureDispatcherNoCookies(true);
+  makeSecureDispatcherNoCookies(true, basicProxyConfig);
+
+// Stealth proxy dispatchers (new)
+const stealthDispatcher = makeSecureDispatcher(false, stealthProxyConfig);
+const stealthDispatcherSkipTlsVerification = makeSecureDispatcher(
+  true,
+  stealthProxyConfig,
+);
+const stealthDispatcherNoCookies = makeSecureDispatcherNoCookies(
+  false,
+  stealthProxyConfig,
+);
+const stealthDispatcherNoCookiesSkipTlsVerification =
+  makeSecureDispatcherNoCookies(true, stealthProxyConfig);
 
 export const getSecureDispatcher = (skipTlsVerification: boolean = false) =>
   skipTlsVerification ? secureDispatcherSkipTlsVerification : secureDispatcher;
@@ -92,3 +141,14 @@ export const getSecureDispatcherNoCookies = (
   skipTlsVerification
     ? secureDispatcherNoCookiesSkipTlsVerification
     : secureDispatcherNoCookies;
+
+// New stealth proxy dispatchers
+export const getStealthDispatcher = (skipTlsVerification: boolean = false) =>
+  skipTlsVerification
+    ? stealthDispatcherSkipTlsVerification
+    : stealthDispatcher;
+
+const getStealthDispatcherNoCookies = (skipTlsVerification: boolean = false) =>
+  skipTlsVerification
+    ? stealthDispatcherNoCookiesSkipTlsVerification
+    : stealthDispatcherNoCookies;

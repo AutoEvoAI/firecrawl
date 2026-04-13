@@ -16,10 +16,12 @@ import { v0Router } from "./routes/v0";
 import os from "os";
 import { logger } from "./lib/logger";
 import { adminRouter } from "./routes/admin";
+import { v1Router } from "./routes/v1";
+import { v2Router } from "./routes/v2";
+import { dashboardRouter } from "./routes/dashboard";
+import expressWs from "express-ws";
 import http from "node:http";
 import https from "node:https";
-import { v1Router } from "./routes/v1";
-import expressWs from "express-ws";
 import {
   ErrorResponse,
   RequestWithMaybeACUC,
@@ -30,7 +32,6 @@ import { QueueFullError } from "./lib/concurrency-limit";
 import { v7 as uuidv7 } from "uuid";
 import { attachWsProxy } from "./services/agentLivecastWS";
 import { cacheableLookup } from "./scraper/scrapeURL/lib/cacheableLookup";
-import { v2Router } from "./routes/v2";
 import { nuqShutdown } from "./services/worker/nuq";
 import { getErrorContactMessage } from "./lib/deployment";
 import { initializeBlocklist } from "./scraper/WebScraper/utils/blocklist";
@@ -107,6 +108,7 @@ app.use(v0Router);
 app.use("/v1", v1Router);
 app.use("/v2", v2Router);
 app.use(adminRouter);
+app.use("/dashboard", dashboardRouter);
 
 const DEFAULT_PORT = config.PORT;
 const HOST = config.HOST;
