@@ -4,6 +4,7 @@
  */
 
 import { WebSearchResult } from "../entities";
+import { SearXNGExtra } from "./result-parser";
 
 interface DeduplicationResult {
   uniqueResults: WebSearchResult[];
@@ -18,10 +19,6 @@ interface DeduplicationResult {
 function normalizeUrl(url: string): string {
   try {
     const urlObj = new URL(url);
-    // Remove trailing slash
-    let normalized = urlObj.href.replace(/\/$/, "");
-    // Remove www prefix
-    normalized = normalized.replace(/^https?:\/\/www\./, "https://");
     // Remove common tracking parameters
     const trackingParams = [
       "utm_source",
@@ -31,7 +28,13 @@ function normalizeUrl(url: string): string {
       "utm_content",
     ];
     trackingParams.forEach(param => urlObj.searchParams.delete(param));
-    return urlObj.href;
+    // Get the modified href
+    let normalized = urlObj.href;
+    // Remove trailing slash
+    normalized = normalized.replace(/\/$/, "");
+    // Remove www prefix
+    normalized = normalized.replace(/^https?:\/\/www\./, "https://");
+    return normalized;
   } catch (e) {
     // Invalid URL, return as-is
     return url;
@@ -125,8 +128,8 @@ export function coarseRank(
       const searxngScore = result.searxngScore || 0;
       const hitCount = hitCounts.get(normalizedUrl) || 0;
 
-      // Combined score: searxngScore * (1 + hitCount * 0.1)
-      const combinedScore = searxngScore * (1 + hitCount * 0.1);
+      // Combined score: hitCount × searxngScore (as per design requirement)
+      const combinedScore = hitCount * searxngScore;
 
       return {
         ...result,
@@ -179,4 +182,64 @@ export function aggregateResults(
   const prepared = prepareForReranker(ranked, maxResults);
 
   return prepared;
+}
+
+/**
+ * Merge extra data from multiple SearXNG responses
+ * @param extras - Array of SearXNGExtra objects
+ * @returns Merged extra data
+ */
+export function mergeExtraData(extras: SearXNGExtra[]): SearXNGExtra {
+  const merged: SearXNGExtra = {};
+
+  // Merge suggestions (union, deduplicated)
+  const allSuggestions = extras.flatMap(e => e.suggestions || []);
+  if (allSuggestions.length > 0) {
+    merged.suggestions = Array.from(new Set(allSuggestions));
+  }
+
+  // Merge answers (union)
+  const allAnswers = extras.flatMap(e => e.answers || []);
+  if (allAnswers.length > 0) {
+    merged.answers = allAnswers;
+  }
+
+  // Merge corrections (union, deduplicated)
+  const allCorrections = extras.flatMap(e => e.corrections || []);
+  if (allCorrections.length > 0) {
+    merged.corrections = Array.from(new Set(allCorrections));
+  }
+
+  // Merge infoboxes (union, deduplicated by id if available)
+  const allInfoboxes = extras.flatMap(e => e.infoboxes || []);
+  if (allInfoboxes.length > 0) {
+    const infoboxMap = new Map<string, any>();
+    for (const infobox of allInfoboxes) {
+      const key = infobox.title || JSON.stringify(infobox);
+      if (!infoboxMap.has(key)) {
+        infoboxMap.set(key, infobox);
+      }
+    }
+    merged.infoboxes = Array.from(infoboxMap.values());
+  }
+
+  // Merge engine data (union)
+  const allEngineData = extras.map(e => e.engineData || {}).filter(d => Object.keys(d).length > 0);
+  if (allEngineData.length > 0) {
+    merged.engineData = Object.assign({}, ...allEngineData);
+  }
+
+  // Merge unresponsive engines (union, deduplicated by engine name)
+  const allUnresponsive = extras.flatMap(e => e.unresponsiveEngines || []);
+  if (allUnresponsive.length > 0) {
+    const unresponsiveMap = new Map<string, any>();
+    for (const engine of allUnresponsive) {
+      if (!unresponsiveMap.has(engine.engine)) {
+        unresponsiveMap.set(engine.engine, engine);
+      }
+    }
+    merged.unresponsiveEngines = Array.from(unresponsiveMap.values());
+  }
+
+  return merged;
 }
