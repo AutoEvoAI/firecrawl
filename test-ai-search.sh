@@ -294,6 +294,144 @@ run_test "AI Full Mode - complete" \
     "success\|score\|expandedQueries\|autoCategories" \
     "Should return score, expandedQueries, and autoCategories in aiMode full"
 
+# ============================================================================
+# Phase 2: Parallel Search Dispatcher Tests
+# ============================================================================
+
+# Test 27: Parallel search with aiMode expand
+run_test "Phase 2 - Parallel Search with aiMode expand" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 10, \"aiMode\": \"expand\"}" \
+    "success\|expandedQueries" \
+    "Should execute parallel search with multiple expanded queries and aggregate results"
+
+# Test 28: Categories dual-track mapping - github (query rewrite)
+run_test "Phase 2 - Categories - github (dual-track)" \
+    "react framework" \
+    "{\"query\": \"react framework\", \"limit\": 5, \"categories\": [\"github\"]}" \
+    "success\|github" \
+    "Should apply dual-track mapping: query rewrite (site:github.com) + SearXNG categories (it)"
+
+# Test 29: Categories dual-track mapping - research (engines)
+run_test "Phase 2 - Categories - research (dual-track)" \
+    "quantum entanglement" \
+    "{\"query\": \"quantum entanglement\", \"limit\": 5, \"categories\": [\"research\"]}" \
+    "success\|arxiv\|google scholar" \
+    "Should apply dual-track mapping: query rewrite (site:arxiv.org OR site:pubmed) + SearXNG engines (arxiv, google scholar, pubmed)"
+
+# Test 30: Categories dual-track mapping - pdf (filetype)
+run_test "Phase 2 - Categories - pdf (dual-track)" \
+    "machine learning tutorial" \
+    "{\"query\": \"machine learning tutorial\", \"limit\": 5, \"categories\": [\"pdf\"]}" \
+    "success\|pdf" \
+    "Should apply dual-track mapping: query rewrite (filetype:pdf) + SearXNG categories (files)"
+
+# Test 31: AI metadata passed to SearXNG - categories
+run_test "Phase 2 - AI Metadata - categories" \
+    "react" \
+    "{\"query\": \"react\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success" \
+    "Should pass AI metadata (searxngCategories, searxngEngines, timeRange) to SearXNG adapter"
+
+# Test 32: AI metadata passed to SearXNG - timeRange
+run_test "Phase 2 - AI Metadata - timeRange" \
+    "recent AI news" \
+    "{\"query\": \"recent AI news\", \"limit\": 5, \"aiMode\": \"full\", \"tbs\": \"qdr:d\"}" \
+    "success" \
+    "Should pass timeRange from AI classification or tbs parameter to SearXNG"
+
+# Test 33: Multiple categories with dual-track mapping
+run_test "Phase 2 - Multiple Categories" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"categories\": [\"github\", \"pdf\"]}" \
+    "success" \
+    "Should combine multiple categories with dual-track mapping (site:github.com + filetype:pdf)"
+
+# Test 34: Parallel search concurrency limit
+run_test "Phase 2 - Parallel Search Concurrency" \
+    "test query" \
+    "{\"query\": \"test query\", \"limit\": 20, \"aiMode\": \"expand\"}" \
+    "success" \
+    "Should limit parallel queries to MAX_PARALLEL (4) even if more expanded queries are generated"
+
+# Test 35: HTTP keep-alive optimization (performance test)
+run_test "Phase 2 - HTTP Keep-Alive Performance" \
+    "fast test" \
+    "{\"query\": \"fast test\", \"limit\": 5}" \
+    "success" \
+    "Should benefit from HTTP keep-alive connection pool - response time should be faster on subsequent requests"
+
+# ============================================================================
+# Phase 1: AI Preprocessor Tests (Enhanced)
+# ============================================================================
+
+# Test 36: Intent classification - research intent
+run_test "Phase 1 - Intent Classification - research" \
+    "quantum computing algorithms" \
+    "{\"query\": \"quantum computing algorithms\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success\|autoCategories" \
+    "Should classify as research intent and return autoCategories (research)"
+
+# Test 37: Intent classification - github intent
+run_test "Phase 1 - Intent Classification - github" \
+    "react component library" \
+    "{\"query\": \"react component library\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success\|autoCategories" \
+    "Should classify as github intent and return autoCategories (github)"
+
+# Test 38: Query expansion - multiple queries
+run_test "Phase 1 - Query Expansion - multiple" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 10, \"aiMode\": \"expand\"}" \
+    "success\|expandedQueries" \
+    "Should return multiple expanded queries (original + AI-generated variations)"
+
+# Test 39: LLM result caching - first request
+run_test "Phase 1 - LLM Cache - First Request" \
+    "llm cache test unique 88888" \
+    "{\"query\": \"llm cache test unique 88888\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success\|aiMetadata" \
+    "Should call LLM for intent classification and query expansion - cache miss"
+
+# Test 40: LLM result caching - second request (cache hit)
+run_test "Phase 1 - LLM Cache - Second Request" \
+    "llm cache test unique 88888" \
+    "{\"query\": \"llm cache test unique 88888\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success\|aiMetadata" \
+    "Should use cached LLM results - faster response time - cache hit"
+
+# Test 41: Timeout protection - LLM timeout
+run_test "Phase 1 - Timeout Protection" \
+    "timeout test" \
+    "{\"query\": \"timeout test\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success" \
+    "Should handle LLM timeout gracefully with fallback to default values"
+
+# ============================================================================
+# Phase 0: Basic Search Tests (Enhanced)
+# ============================================================================
+
+# Test 42: Basic search without AI
+run_test "Phase 0 - Basic Search (no AI)" \
+    "artificial intelligence" \
+    "{\"query\": \"artificial intelligence\", \"limit\": 5, \"aiMode\": \"false\"}" \
+    "success\|title\|url" \
+    "Should perform basic search without AI preprocessing - response time ≤890ms"
+
+# Test 43: Search fallback - Fire Engine → SearXNG
+run_test "Phase 0 - Search Fallback" \
+    "test fallback" \
+    "{\"query\": \"test fallback\", \"limit\": 5}" \
+    "success\|title\|url" \
+    "Should fallback from Fire Engine to SearXNG if Fire Engine not available"
+
+# Test 44: Search fallback - SearXNG → DuckDuckGo
+run_test "Phase 0 - Final Fallback to DDG" \
+    "test final fallback" \
+    "{\"query\": \"test final fallback\", \"limit\": 5}" \
+    "success\|title\|url" \
+    "Should fallback to DuckDuckGo if SearXNG returns no results"
+
 echo ""
 echo "============================================================"
 echo "Test Summary"
