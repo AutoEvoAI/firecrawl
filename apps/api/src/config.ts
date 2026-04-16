@@ -237,8 +237,8 @@ const configSchema = z.object({
 
   // AI Search (isolated from global AI config)
   AI_SEARCH_ENABLED: z.stringbool().optional(),
-  AI_SEARCH_RERANK_MODEL: z.string().optional(),
-  AI_SEARCH_RERANK_PROVIDER: z.string().optional(),
+  AI_SEARCH_RERANK_MODEL: z.string().default("jina-reranker-v3"),
+  AI_SEARCH_RERANK_PROVIDER: z.string().default("jina"),
   AI_SEARCH_RERANK_ENDPOINT: z.string().optional(),
   AI_SEARCH_RERANK_API_KEY: z.string().optional(),
   AI_SEARCH_RERANK_TIMEOUT: z.coerce.number().default(3000),
