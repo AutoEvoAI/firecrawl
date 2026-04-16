@@ -237,14 +237,11 @@ const configSchema = z.object({
 
   // AI Search (isolated from global AI config)
   AI_SEARCH_ENABLED: z.stringbool().optional(),
-  AI_SEARCH_EXPAND_MODEL: z.string().optional(),
-  AI_SEARCH_EXPAND_PROVIDER: z.string().optional(),
-  AI_SEARCH_EXPAND_ENDPOINT: z.string().optional(),
-  AI_SEARCH_EXPAND_API_KEY: z.string().optional(),
   AI_SEARCH_RERANK_MODEL: z.string().optional(),
   AI_SEARCH_RERANK_PROVIDER: z.string().optional(),
   AI_SEARCH_RERANK_ENDPOINT: z.string().optional(),
   AI_SEARCH_RERANK_API_KEY: z.string().optional(),
+  AI_SEARCH_RERANK_TIMEOUT: z.coerce.number().default(3000),
 
   // Rate Limiting
   RATE_LIMIT_TEST_API_KEY_SCRAPE: z.coerce.number().optional(),

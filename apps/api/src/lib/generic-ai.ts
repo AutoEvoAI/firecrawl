@@ -81,37 +81,34 @@ let searchRerankModelInstance: any = null;
 /**
  * Get the AI Search Expand Model (Phase 1: query expansion + intent classification)
  * This is isolated from the global MODEL_NAME configuration
+ * Uses AI_SEARCH_LLM_* variables (same as preprocessor)
  */
 export function getSearchExpandModel() {
   if (searchExpandModelInstance) {
     return searchExpandModelInstance;
   }
 
-  const modelName = config.AI_SEARCH_EXPAND_MODEL || "gpt-4o-mini";
-  const providerName = config.AI_SEARCH_EXPAND_PROVIDER as Provider || defaultProvider;
-  const endpoint = config.AI_SEARCH_EXPAND_ENDPOINT;
-  const apiKey = config.AI_SEARCH_EXPAND_API_KEY;
+  const modelName = config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini";
+  const endpoint = config.AI_SEARCH_LLM_BASE_URL;
+  const apiKey = config.AI_SEARCH_LLM_API_KEY;
 
   let provider: any;
 
   if (endpoint) {
     // Create independent provider instance with custom endpoint
-    if (providerName === "openai") {
+    if (endpoint.includes("openai") || endpoint.includes("vllm")) {
       provider = createOpenAI({
         baseURL: endpoint,
         apiKey: apiKey || config.OPENAI_API_KEY,
       });
-    } else if (providerName === "ollama") {
+    } else {
       provider = createOllama({
         baseURL: endpoint,
       });
-    } else {
-      // Fallback to global provider for other types
-      provider = providerList[providerName];
     }
   } else {
     // Reuse global provider instance
-    provider = providerList[providerName];
+    provider = providerList[defaultProvider];
   }
 
   // Get the model (directly use modelName, not affected by MODEL_NAME override)

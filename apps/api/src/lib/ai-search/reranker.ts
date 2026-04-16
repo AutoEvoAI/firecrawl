@@ -7,6 +7,7 @@
  * - AI_SEARCH_RERANK_PROVIDER: Provider (ollama, openai, etc.)
  * - AI_SEARCH_RERANK_ENDPOINT: Custom endpoint for reranker service
  * - AI_SEARCH_RERANK_API_KEY: API key for reranker service
+ * - AI_SEARCH_RERANK_TIMEOUT: Timeout in milliseconds (default: 3000)
  */
 
 import { WebSearchResult } from "../entities";
@@ -19,6 +20,31 @@ import { z } from "zod";
 const rerankSchema = z.object({
   rankedIndices: z.array(z.number()),
 });
+
+/**
+ * Helper function to add timeout to promises
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operation: string
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      logger.warn(`${operation} timed out after ${timeoutMs}ms`);
+      reject(new Error(`${operation} timeout`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 /**
  * Rerank search results using the reranker model
@@ -55,14 +81,18 @@ ${resultsText}
 
 Return a JSON array of result indices in order of relevance (most relevant first). Format: {"rankedIndices": [1, 3, 2, ...]}`;
 
-    // Call the model to get reranking
-    const { object } = await generateObject({
-      model,
-      prompt,
-      schema: rerankSchema,
-      temperature: 0,
-      maxRetries: 1,
-    });
+    // Call the model to get reranking with timeout
+    const { object } = await withTimeout(
+      generateObject({
+        model,
+        prompt,
+        schema: rerankSchema,
+        temperature: 0,
+        maxRetries: 1,
+      }),
+      config.AI_SEARCH_RERANK_TIMEOUT || 3000,
+      "Reranking"
+    );
 
     // Reorder results based on indices
     const reranked = object.rankedIndices
