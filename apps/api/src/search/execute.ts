@@ -23,6 +23,11 @@ import {
   getTTLByMode,
 } from "../lib/search-cache";
 import { aggregateResults } from "../lib/ai-search/aggregator";
+import {
+  preprocessQuery,
+  shouldExpandQuery,
+  shouldClassifyIntent,
+} from "../lib/ai-search/preprocessor";
 
 interface SearchOptions {
   query: string;
@@ -123,6 +128,46 @@ export async function executeSearch(
         logger.warn("Failed to parse cached result", { error });
         // Continue with normal search if cache parse fails
       }
+    }
+  }
+
+  // AI Preprocessing (query expansion and intent classification)
+  let expandedQueries: string[] = [query];
+  let aiMetadata: any = undefined;
+
+  if (aiMode !== "false" && config.AI_SEARCH_LLM_MODEL) {
+    try {
+      if (shouldExpandQuery(aiMode) || shouldClassifyIntent(aiMode)) {
+        logger.info("Running AI preprocessing", { aiMode });
+        const preprocessResult = await preprocessQuery(query, options.lang || "en");
+        
+        // Use expanded queries if expansion is enabled
+        if (shouldExpandQuery(aiMode)) {
+          expandedQueries = preprocessResult.expandedQueries;
+          logger.info("Query expansion completed", { 
+            originalQuery: query, 
+            expandedQueries,
+            count: expandedQueries.length 
+          });
+        }
+        
+        // Store AI metadata if classification is enabled
+        if (shouldClassifyIntent(aiMode)) {
+          aiMetadata = {
+            intent: preprocessResult.intent,
+            confidence: preprocessResult.confidence,
+            firecrawlCategories: preprocessResult.firecrawlCategories,
+            searxngCategories: preprocessResult.searxngCategories,
+            searxngEngines: preprocessResult.searxngEngines,
+            timeRange: preprocessResult.timeRange,
+          };
+          logger.info("Intent classification completed", aiMetadata);
+        }
+      }
+    } catch (error) {
+      logger.warn("AI preprocessing failed, using original query", { error });
+      // Fallback to original query if preprocessing fails
+      expandedQueries = [query];
     }
   }
 

@@ -7,6 +7,75 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { config } from "../../config";
 import { logger } from "../logger";
+import { redisEvictConnection } from "../../services/redis";
+import crypto from "crypto";
+
+/**
+ * Helper function to add timeout to promises
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  operation: string
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      logger.warn(`${operation} timed out after ${timeoutMs}ms`);
+      reject(new Error(`${operation} timeout`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]);
+}
+
+/**
+ * Generate cache key for LLM preprocessing results
+ */
+function getPreprocessCacheKey(
+  operation: "intent" | "expansion",
+  query: string,
+  lang: string = "en"
+): string {
+  const keyData = { operation, query: query.toLowerCase().trim(), lang };
+  const keyString = JSON.stringify(keyData, Object.keys(keyData).sort());
+  const hash = crypto.createHash("sha256").update(keyString).digest("hex");
+  return `ai-search:preprocess:${operation}:${hash}`;
+}
+
+/**
+ * Get cached LLM result
+ */
+async function getCachedResult<T>(
+  cacheKey: string
+): Promise<T | null> {
+  try {
+    const value = await redisEvictConnection.get(cacheKey);
+    if (value) {
+      logger.info(`LLM cache hit for ${cacheKey}`);
+      return JSON.parse(value) as T;
+    }
+    return null;
+  } catch (error) {
+    logger.error(`Failed to get LLM cache for ${cacheKey}: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Cache LLM result with TTL
+ */
+async function setCachedResult(
+  cacheKey: string,
+  result: any,
+  ttl: number = 3600
+): Promise<void> {
+  try {
+    await redisEvictConnection.setex(cacheKey, ttl, JSON.stringify(result));
+    logger.info(`LLM result cached for ${cacheKey} (TTL: ${ttl}s)`);
+  } catch (error) {
+    logger.error(`Failed to cache LLM result for ${cacheKey}: ${error}`);
+  }
+}
 
 /**
  * Intent classification schema
@@ -37,7 +106,7 @@ const intentSchema = z.object({
     )
     .optional(),
   searxngEngines: z.array(z.string()).optional(),
-  timeRange: z.enum(["day", "month", "year", "null"]).optional(),
+  timeRange: z.enum(["day", "month", "year"]).nullable().optional(),
   reasoning: z.string().optional(),
 });
 
@@ -66,9 +135,26 @@ export async function classifyIntent(
   timeRange?: string;
   reasoning?: string;
 }> {
+  // Check cache first
+  const cacheKey = getPreprocessCacheKey("intent", query, lang);
+  const cachedResult = await getCachedResult<typeof intentSchema._type>(
+    cacheKey
+  );
+  if (cachedResult) {
+    return cachedResult;
+  }
+
   try {
     // Build AI-specific configuration
-    const aiConfig: any = {
+    const aiConfig: {
+      model: string;
+      schema: z.ZodSchema;
+      prompt: string;
+      temperature: number;
+      maxRetries: number;
+      apiKey?: string;
+      baseURL?: string;
+    } = {
       model: config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini",
       schema: intentSchema,
       prompt: `You are a search intent classifier. Given a user query, classify the search intent and suggest optimal search parameters. Language: ${lang}.
@@ -88,13 +174,22 @@ Classify this search query: "${query}"`,
       aiConfig.baseURL = config.AI_SEARCH_LLM_BASE_URL;
     }
 
-    const result = await generateObject(aiConfig);
+    const result = await withTimeout(
+      generateObject(aiConfig),
+      config.AI_SEARCH_LLM_TIMEOUT,
+      "Intent classification"
+    );
 
     if (!result.object) {
       throw new Error("Failed to generate intent classification result");
     }
 
-    return result.object as any;
+    const classificationResult = result.object as any;
+    
+    // Cache the result
+    await setCachedResult(cacheKey, classificationResult, 3600); // 1 hour TTL
+
+    return classificationResult;
   } catch (error) {
     logger.error("Intent classification failed", { error, query });
     // Fallback to informational intent
@@ -117,9 +212,24 @@ export async function expandQuery(
   query: string,
   lang: string = "en",
 ): Promise<string[]> {
+  // Check cache first
+  const cacheKey = getPreprocessCacheKey("expansion", query, lang);
+  const cachedResult = await getCachedResult<string[]>(cacheKey);
+  if (cachedResult) {
+    return cachedResult;
+  }
+
   try {
     // Build AI-specific configuration
-    const aiConfig: any = {
+    const aiConfig: {
+      model: string;
+      schema: z.ZodSchema;
+      prompt: string;
+      temperature: number;
+      maxRetries: number;
+      apiKey?: string;
+      baseURL?: string;
+    } = {
       model: config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini",
       schema: expansionSchema,
       prompt: `You are a search query expansion expert. Given a user query, generate 2-3 alternative search queries that capture different aspects or phrasings of the same intent. Keep queries concise (under 10 words). Language: ${lang}.
@@ -139,7 +249,11 @@ Expand this search query: "${query}"`,
       aiConfig.baseURL = config.AI_SEARCH_LLM_BASE_URL;
     }
 
-    const result = await generateObject(aiConfig);
+    const result = await withTimeout(
+      generateObject(aiConfig),
+      config.AI_SEARCH_LLM_TIMEOUT,
+      "Query expansion"
+    );
 
     if (!result.object) {
       throw new Error("Failed to generate query expansion result");
@@ -149,6 +263,9 @@ Expand this search query: "${query}"`,
     if (!queries) {
       throw new Error("Failed to generate query expansion result");
     }
+
+    // Cache the result
+    await setCachedResult(cacheKey, queries, 3600); // 1 hour TTL
 
     return queries;
   } catch (error) {

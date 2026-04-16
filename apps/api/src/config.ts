@@ -145,6 +145,7 @@ const configSchema = z.object({
   AI_SEARCH_LLM_MODEL: z.string().default("gpt-4o-mini"),
   AI_SEARCH_LLM_API_KEY: z.string().optional(),
   AI_SEARCH_LLM_BASE_URL: z.string().optional(),
+  AI_SEARCH_LLM_TIMEOUT: z.coerce.number().default(5000),
 
   // AI Search Reranker
   AI_SEARCH_EMBEDDING_MODEL: z.string().default("bge-reranker-v2-m3"),

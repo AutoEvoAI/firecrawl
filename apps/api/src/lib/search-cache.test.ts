@@ -14,7 +14,7 @@ jest.mock("../services/redis", () => ({
     set: jest.fn(),
     setex: jest.fn(),
     del: jest.fn(),
-    keys: jest.fn(),
+    scan: jest.fn(),
   },
 }));
 
@@ -123,21 +123,39 @@ describe("search-cache", () => {
   });
 
   describe("invalidateCache", () => {
-    it("should delete keys matching pattern", async () => {
-      (redisEvictConnection.keys as jest.Mock).mockResolvedValue([
-        "key1",
-        "key2",
-      ]);
+    it("should delete keys matching pattern using SCAN", async () => {
+      (redisEvictConnection.scan as jest.Mock)
+        .mockResolvedValueOnce(["0", ["key1", "key2"]])
+        .mockResolvedValueOnce(["0", []]);
+
       (redisEvictConnection.del as jest.Mock).mockResolvedValue(2);
 
       const count = await invalidateCache("ai-search:*");
       expect(count).toBe(2);
-      expect(redisEvictConnection.keys).toHaveBeenCalledWith("ai-search:*");
+      expect(redisEvictConnection.scan).toHaveBeenCalledWith(
+        "0",
+        "MATCH",
+        "ai-search:*",
+        "COUNT",
+        100,
+      );
       expect(redisEvictConnection.del).toHaveBeenCalledWith("key1", "key2");
     });
 
+    it("should handle multiple SCAN iterations", async () => {
+      (redisEvictConnection.scan as jest.Mock)
+        .mockResolvedValueOnce(["1", ["key1", "key2"]])
+        .mockResolvedValueOnce(["0", ["key3"]]);
+
+      (redisEvictConnection.del as jest.Mock).mockResolvedValue(2);
+
+      const count = await invalidateCache("ai-search:*");
+      expect(count).toBe(3);
+      expect(redisEvictConnection.scan).toHaveBeenCalledTimes(2);
+    });
+
     it("should return 0 when no keys match", async () => {
-      (redisEvictConnection.keys as jest.Mock).mockResolvedValue([]);
+      (redisEvictConnection.scan as jest.Mock).mockResolvedValue(["0", []]);
 
       const count = await invalidateCache("ai-search:*");
       expect(count).toBe(0);
@@ -145,7 +163,7 @@ describe("search-cache", () => {
     });
 
     it("should handle Redis error gracefully", async () => {
-      (redisEvictConnection.keys as jest.Mock).mockRejectedValue(
+      (redisEvictConnection.scan as jest.Mock).mockRejectedValue(
         new Error("Redis error"),
       );
 
@@ -172,13 +190,13 @@ describe("search-cache", () => {
       expect(getTTLByMode("false", "qdr:d")).toBe(300);
     });
 
-    it("should return 300s for week/month tbs", () => {
-      expect(getTTLByMode("false", "qdr:w")).toBe(300);
-      expect(getTTLByMode("false", "qdr:m")).toBe(300);
+    it("should return 1800s for week/month tbs", () => {
+      expect(getTTLByMode("false", "qdr:w")).toBe(1800);
+      expect(getTTLByMode("false", "qdr:m")).toBe(1800);
     });
 
-    it("should return 300s for year tbs", () => {
-      expect(getTTLByMode("false", "qdr:y")).toBe(300);
+    it("should return 3600s for year tbs", () => {
+      expect(getTTLByMode("false", "qdr:y")).toBe(3600);
     });
 
     it("should return 900s for unknown mode", () => {

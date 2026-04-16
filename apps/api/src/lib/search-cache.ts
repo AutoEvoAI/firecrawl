@@ -84,16 +84,31 @@ export async function setSearchResult(
  */
 export async function invalidateCache(pattern: string): Promise<number> {
   try {
-    const keys = await redisEvictConnection.keys(pattern);
-    if (keys.length === 0) {
-      return 0;
-    }
+    const batchSize = 100;
+    let totalDeleted = 0;
+    let cursor = "0";
 
-    await redisEvictConnection.del(...keys);
+    do {
+      const result = await redisEvictConnection.scan(
+        cursor,
+        "MATCH",
+        pattern,
+        "COUNT",
+        batchSize,
+      );
+      cursor = result[0];
+      const keys = result[1];
+
+      if (keys.length > 0) {
+        await redisEvictConnection.del(...keys);
+        totalDeleted += keys.length;
+      }
+    } while (cursor !== "0");
+
     logger.info(
-      `Invalidated ${keys.length} cache entries matching pattern: ${pattern}`,
+      `Invalidated ${totalDeleted} cache entries matching pattern: ${pattern}`,
     );
-    return keys.length;
+    return totalDeleted;
   } catch (error) {
     logger.error(`Failed to invalidate cache pattern ${pattern}: ${error}`);
     return 0;
@@ -112,9 +127,9 @@ export function getTTLByMode(aiMode: string = "false", tbs?: string): number {
     if (tbs.includes("h") || tbs.includes("d")) {
       return 300; // 5 minutes for day/hour queries
     } else if (tbs.includes("w") || tbs.includes("m")) {
-      return 300; // 5 minutes for week/month queries (was 1800, fixing to match test)
+      return 1800; // 30 minutes for week/month queries
     } else if (tbs.includes("y")) {
-      return 300; // 5 minutes for year queries (was 3600, fixing to match test)
+      return 3600; // 60 minutes for year queries
     }
   }
 
