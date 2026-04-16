@@ -5,6 +5,7 @@ import { searxng_search } from "./searxng";
 import { ddgSearch } from "./ddgsearch";
 import { Logger } from "winston";
 import { aggregateResults } from "../../lib/ai-search/aggregator";
+import { rerankResults, shouldRerank } from "../../lib/ai-search/reranker";
 
 interface SearchOptions {
   query: string;
@@ -97,6 +98,16 @@ async function parallelSearch(
       allWebResults,
       config.AI_SEARCH_MAX_RESULTS_FOR_RERANK || 20,
     );
+
+    // Apply AI reranking if enabled
+    if (shouldRerank(options.aiMode || "false")) {
+      options.logger.info("Applying AI reranking");
+      aggregated.web = await rerankResults(
+        options.query,
+        aggregated.web,
+        options.num_results || 10,
+      );
+    }
   }
 
   options.logger.info(`Parallel search completed with ${aggregated.web?.length || 0} results`);

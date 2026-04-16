@@ -73,3 +73,89 @@ export function getEmbeddingModel(
     ? providerList[provider].embedding(config.MODEL_EMBEDDING_NAME)
     : providerList[provider].embedding(name);
 }
+
+// Module-level cache for AI search model instances
+let searchExpandModelInstance: any = null;
+let searchRerankModelInstance: any = null;
+
+/**
+ * Get the AI Search Expand Model (Phase 1: query expansion + intent classification)
+ * This is isolated from the global MODEL_NAME configuration
+ */
+export function getSearchExpandModel() {
+  if (searchExpandModelInstance) {
+    return searchExpandModelInstance;
+  }
+
+  const modelName = config.AI_SEARCH_EXPAND_MODEL || "gpt-4o-mini";
+  const providerName = config.AI_SEARCH_EXPAND_PROVIDER as Provider || defaultProvider;
+  const endpoint = config.AI_SEARCH_EXPAND_ENDPOINT;
+  const apiKey = config.AI_SEARCH_EXPAND_API_KEY;
+
+  let provider: any;
+
+  if (endpoint) {
+    // Create independent provider instance with custom endpoint
+    if (providerName === "openai") {
+      provider = createOpenAI({
+        baseURL: endpoint,
+        apiKey: apiKey || config.OPENAI_API_KEY,
+      });
+    } else if (providerName === "ollama") {
+      provider = createOllama({
+        baseURL: endpoint,
+      });
+    } else {
+      // Fallback to global provider for other types
+      provider = providerList[providerName];
+    }
+  } else {
+    // Reuse global provider instance
+    provider = providerList[providerName];
+  }
+
+  // Get the model (directly use modelName, not affected by MODEL_NAME override)
+  searchExpandModelInstance = provider(modelName);
+  return searchExpandModelInstance;
+}
+
+/**
+ * Get the AI Search Rerank Model (Phase 5: search result reranking)
+ * This is isolated from the global MODEL_NAME configuration
+ */
+export function getSearchRerankModel() {
+  if (searchRerankModelInstance) {
+    return searchRerankModelInstance;
+  }
+
+  const modelName = config.AI_SEARCH_RERANK_MODEL || "bge-reranker-v2-m3";
+  const providerName = config.AI_SEARCH_RERANK_PROVIDER as Provider || "ollama";
+  const endpoint = config.AI_SEARCH_RERANK_ENDPOINT;
+  const apiKey = config.AI_SEARCH_RERANK_API_KEY;
+
+  let provider: any;
+
+  if (endpoint) {
+    // Create independent provider instance with custom endpoint
+    if (providerName === "openai") {
+      provider = createOpenAI({
+        baseURL: endpoint,
+        apiKey: apiKey || config.OPENAI_API_KEY,
+      });
+    } else if (providerName === "ollama") {
+      provider = createOllama({
+        baseURL: endpoint,
+      });
+    } else {
+      // Fallback to global provider for other types
+      provider = providerList[providerName];
+    }
+  } else {
+    // Reuse global provider instance
+    provider = providerList[providerName];
+  }
+
+  // Get the model (directly use modelName, not affected by MODEL_NAME override)
+  searchRerankModelInstance = provider(modelName);
+  return searchRerankModelInstance;
+}
