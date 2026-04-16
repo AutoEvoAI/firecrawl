@@ -2,12 +2,17 @@ import axios from "axios";
 import http from "http";
 import https from "https";
 import { config } from "../../config";
-import { SearchV2Response, WebSearchResult } from "../../lib/entities";
+import {
+  SearchV2Response,
+  WebSearchResult,
+} from "../../lib/entities";
 import { logger } from "../../lib/logger";
 import {
   parseSearXNGResponse,
   shouldIncludeExtra,
   formatExtraForResponse,
+  classifyResults,
+  ClassifiedResult,
 } from "../../lib/ai-search/result-parser";
 
 // Create axios instance with keep-alive connection pool
@@ -84,6 +89,11 @@ export async function searxng_search(
   ): Promise<{
     results: WebSearchResult[];
     fullResponse: SearXNGResponse | null;
+    classifiedResults?: {
+      web: ClassifiedResult[];
+      news: ClassifiedResult[];
+      images: ClassifiedResult[];
+    };
   }> => {
     const params: Record<string, any> = {
       q: q,
@@ -140,23 +150,28 @@ export async function searxng_search(
       const data = response.data;
 
       if (data && Array.isArray(data.results)) {
-        const webResults: WebSearchResult[] = data.results.map(
-          (a: SearXNGResult) => ({
-            url: a.url,
-            title: a.title,
-            description: a.content,
+        // Classify results into web/news/images buckets
+        const classified = classifyResults(data.results);
+
+        // Convert ClassifiedResult to WebSearchResult (preserving metadata)
+        const webResults: WebSearchResult[] = classified.web.map(
+          (r: ClassifiedResult) => ({
+            url: r.url,
+            title: r.title,
+            description: r.description,
             // SearXNG metadata for internal use (reranking, aggregation)
-            searxngScore: a.score,
-            engines: a.engines,
-            category: a.category,
-            publishedDate: a.publishedDate,
-            author: a.author,
+            searxngScore: r.searxngScore,
+            engines: r.engines,
+            category: r.category,
+            publishedDate: r.publishedDate,
+            author: r.author,
           }),
         );
 
         return {
           results: webResults,
           fullResponse: data as SearXNGResponse,
+          classifiedResults: classified,
         };
       }
 
@@ -177,10 +192,12 @@ export async function searxng_search(
       Math.ceil(requestedResults / resultsPerPage),
     );
     let webResults: WebSearchResult[] = [];
+    let newsResults: WebSearchResult[] = [];
+    let imagesResults: WebSearchResult[] = [];
     let fullResponse: SearXNGResponse | null = null;
 
     for (let pageOffset = 0; pageOffset < pagesToFetch; pageOffset += 1) {
-      const { results: pageResults, fullResponse: pageResponse } =
+      const { results: pageResults, fullResponse: pageResponse, classifiedResults: pageClassified } =
         await fetchPage(startPage + pageOffset);
 
       if (pageResults.length === 0) {
@@ -188,6 +205,35 @@ export async function searxng_search(
       }
 
       webResults = webResults.concat(pageResults);
+
+      // Add news and images results if available
+      if (pageClassified) {
+        newsResults = newsResults.concat(
+          pageClassified.news.map((r: ClassifiedResult) => ({
+            url: r.url,
+            title: r.title,
+            description: r.description,
+            searxngScore: r.searxngScore,
+            engines: r.engines,
+            category: r.category,
+            publishedDate: r.publishedDate,
+            author: r.author,
+          }))
+        );
+
+        imagesResults = imagesResults.concat(
+          pageClassified.images.map((r: ClassifiedResult) => ({
+            url: r.url,
+            title: r.title,
+            description: r.description,
+            searxngScore: r.searxngScore,
+            engines: r.engines,
+            category: r.category,
+            publishedDate: r.publishedDate,
+            author: r.author,
+          }))
+        );
+      }
 
       // Keep the first page's full response for extra data
       if (pageResponse && !fullResponse) {
@@ -203,6 +249,14 @@ export async function searxng_search(
 
     if (webResults.length > 0) {
       response.web = webResults.slice(0, requestedResults);
+    }
+
+    if (newsResults.length > 0) {
+      response.news = newsResults;
+    }
+
+    if (imagesResults.length > 0) {
+      response.images = imagesResults;
     }
 
     // Parse and include extra data if requested

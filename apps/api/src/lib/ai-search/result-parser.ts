@@ -3,6 +3,22 @@
  * Parses SearXNG JSON responses to extract rich metadata (suggestions, answers, corrections, infoboxes)
  */
 
+export type ResultCategory = "web" | "news" | "images";
+
+export interface ClassifiedResult {
+  url: string;
+  title: string;
+  description: string;
+  category: ResultCategory;
+  // SearXNG metadata for internal use (reranking, aggregation)
+  searxngScore?: number;
+  engines?: string[];
+  publishedDate?: string;
+  author?: string;
+  img_src?: string;
+  thumbnail_src?: string;
+}
+
 interface SearXNGAnswer {
   text: string;
   source?: string;
@@ -18,12 +34,19 @@ interface SearXNGInfobox {
   engine?: string;
 }
 
+interface UnresponsiveEngine {
+  engine: string;
+  error_type: string;
+  suspended: boolean;
+}
+
 export interface SearXNGExtra {
   suggestions?: string[];
   answers?: SearXNGAnswer[];
   corrections?: string[];
   infoboxes?: SearXNGInfobox[];
   engineData?: Record<string, Record<string, string>>;
+  unresponsiveEngines?: UnresponsiveEngine[];
 }
 
 interface SearXNGResponse {
@@ -44,6 +67,11 @@ interface SearXNGResponse {
   suggestions: string[];
   corrections: string[];
   engine_data: Record<string, Record<string, string>>;
+  unresponsive_engines?: Array<{
+    engine: string;
+    error_type: string;
+    suspended: boolean;
+  }>;
 }
 
 /**
@@ -96,7 +124,105 @@ export function parseSearXNGResponse(
     extra.engineData = rawResponse.engine_data;
   }
 
+  // Parse unresponsive engines
+  if (
+    rawResponse.unresponsive_engines &&
+    Array.isArray(rawResponse.unresponsive_engines)
+  ) {
+    extra.unresponsiveEngines = rawResponse.unresponsive_engines;
+  }
+
   return extra;
+}
+
+/**
+ * Classify a single result into web/news/images category
+ * @param result - SearXNG result
+ * @returns Result category
+ */
+export function classifyResult(result: any): ResultCategory {
+  // Images: category === "images" or has img_src
+  if (
+    result.category === "images" ||
+    result.img_src ||
+    result.thumbnail_src
+  ) {
+    return "images";
+  }
+
+  // News: category === "news" or has publishedDate and from news engine
+  if (
+    result.category === "news" ||
+    (result.publishedDate && isNewsEngine(result.engine))
+  ) {
+    return "news";
+  }
+
+  // Default to web
+  return "web";
+}
+
+/**
+ * Check if engine is a news engine
+ * @param engine - Engine name
+ * @returns Whether the engine is a news engine
+ */
+function isNewsEngine(engine?: string): boolean {
+  if (!engine) return false;
+  const newsEngines = [
+    "bing news",
+    "google news",
+    "news",
+    "newsapi",
+    "newsboat",
+    "newspaper",
+  ];
+  return newsEngines.some((ne) => engine.toLowerCase().includes(ne));
+}
+
+/**
+ * Classify all results into web/news/images buckets
+ * @param results - Array of SearXNG results
+ * @returns Classified results separated by category
+ */
+export function classifyResults(
+  results: any[],
+): {
+  web: ClassifiedResult[];
+  news: ClassifiedResult[];
+  images: ClassifiedResult[];
+} {
+  const classified: {
+    web: ClassifiedResult[];
+    news: ClassifiedResult[];
+    images: ClassifiedResult[];
+  } = {
+    web: [],
+    news: [],
+    images: [],
+  };
+
+  for (const result of results) {
+    const category = classifyResult(result);
+
+    const classifiedResult: ClassifiedResult = {
+      url: result.url,
+      title: result.title,
+      description: result.content,
+      category,
+      // Preserve SearXNG metadata for internal use (Phase 5 reranking)
+      searxngScore: result.score,
+      engines: result.engines,
+      publishedDate: result.publishedDate,
+      author: result.author,
+      img_src: result.img_src,
+      thumbnail_src: result.thumbnail_src,
+    };
+
+    classified[category].push(classifiedResult);
+  }
+
+  return classified;
 }
 
 /**

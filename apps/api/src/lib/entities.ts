@@ -115,7 +115,7 @@ export class SearchResult {
   }
 }
 
-interface ImageSearchResult {
+export interface ImageSearchResult {
   title?: string;
   imageUrl?: string;
   imageWidth?: number;
@@ -125,7 +125,7 @@ interface ImageSearchResult {
   answer?: string;
 }
 
-interface NewsSearchResult {
+export interface NewsSearchResult {
   title?: string;
   url?: string;
   snippet?: string;
@@ -178,8 +178,8 @@ export interface AIMetadata {
 
 export interface SearchV2Response {
   web?: WebSearchResult[];
-  images?: ImageSearchResult[];
-  news?: NewsSearchResult[];
+  images?: WebSearchResult[];
+  news?: WebSearchResult[];
   extra?: SearXNGExtra;
   aiMetadata?: AIMetadata;
 }
