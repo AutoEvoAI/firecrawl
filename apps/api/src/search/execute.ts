@@ -252,6 +252,13 @@ export async function executeSearch(
     if (searchResponse.web.length > limit) {
       searchResponse.web = searchResponse.web.slice(0, limit);
     }
+    // Add relevanceScore if aiMode is enabled
+    if (aiMode !== "false") {
+      searchResponse.web = searchResponse.web.map((result, index) => ({
+        ...result,
+        relevanceScore: result.searxngScore ? result.searxngScore * 100 : 100 - index,
+      }));
+    }
     totalResultsCount += searchResponse.web.length;
   }
 
@@ -259,12 +266,26 @@ export async function executeSearch(
     if (searchResponse.images.length > limit) {
       searchResponse.images = searchResponse.images.slice(0, limit);
     }
+    // Add relevanceScore if aiMode is enabled
+    if (aiMode !== "false") {
+      searchResponse.images = searchResponse.images.map((result, index) => ({
+        ...result,
+        relevanceScore: 100 - index,
+      }));
+    }
     totalResultsCount += searchResponse.images.length;
   }
 
   if (searchResponse.news && searchResponse.news.length > 0) {
     if (searchResponse.news.length > limit) {
       searchResponse.news = searchResponse.news.slice(0, limit);
+    }
+    // Add relevanceScore if aiMode is enabled
+    if (aiMode !== "false") {
+      searchResponse.news = searchResponse.news.map((result, index) => ({
+        ...result,
+        relevanceScore: 100 - index,
+      }));
     }
     totalResultsCount += searchResponse.news.length;
   }
@@ -347,6 +368,12 @@ export async function executeSearch(
     zeroDataRetention: zeroDataRetention ?? false,
     hasScrapeFormats: shouldScrape ?? false,
   }).catch(err => logger.warn("Search tracking failed", { error: err }));
+
+  // Filter extra fields based on includeExtra parameter (Phase 6)
+  if (!options.includeExtra) {
+    delete searchResponse.extra;
+    delete searchResponse.aiMetadata;
+  }
 
   // Store result in cache (skip for ZDR requests)
   if (config.AI_SEARCH_CACHE_ENABLED && !isZDR) {

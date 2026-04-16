@@ -154,6 +154,8 @@ export interface WebSearchResult {
   engines?: string[];
   publishedDate?: string;
   author?: string;
+  // AI relevance score (Phase 6)
+  relevanceScore?: number;
   // Scraped content fields
   markdown?: string;
   html?: string;
