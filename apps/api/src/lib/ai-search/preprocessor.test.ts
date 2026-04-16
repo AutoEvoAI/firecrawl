@@ -293,7 +293,7 @@ describe("preprocessor", () => {
       mockedGenerateObject.mockImplementation(
         () =>
           new Promise(resolve =>
-            setTimeout(() => resolve({ object: {} }), 200)
+            setTimeout(() => resolve({ object: {} } as any), 200)
           )
       );
 
@@ -306,7 +306,7 @@ describe("preprocessor", () => {
       mockedGenerateObject.mockImplementation(
         () =>
           new Promise(resolve =>
-            setTimeout(() => resolve({ object: {} }), 200)
+            setTimeout(() => resolve({ object: {} } as any), 200)
           )
       );
 

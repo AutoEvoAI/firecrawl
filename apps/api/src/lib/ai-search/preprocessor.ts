@@ -132,12 +132,12 @@ export async function classifyIntent(
   firecrawlCategories?: string[];
   searxngCategories?: string[];
   searxngEngines?: string[];
-  timeRange?: string;
+  timeRange?: string | null;
   reasoning?: string;
 }> {
   // Check cache first
   const cacheKey = getPreprocessCacheKey("intent", query, lang);
-  const cachedResult = await getCachedResult<typeof intentSchema._type>(
+  const cachedResult = await getCachedResult<z.infer<typeof intentSchema>>(
     cacheKey
   );
   if (cachedResult) {
@@ -290,7 +290,7 @@ export async function preprocessQuery(
   firecrawlCategories?: string[];
   searxngCategories?: string[];
   searxngEngines?: string[];
-  timeRange?: string;
+  timeRange?: string | null;
   expandedQueries: string[];
 }> {
   // Parallel execution of intent classification and query expansion
