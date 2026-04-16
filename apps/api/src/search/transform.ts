@@ -24,7 +24,7 @@ export function transformToV1Response(
           ...item,
           url: item.url,
           title: item.title || "",
-          description: item.snippet || "",
+          description: item.description || "",
         } as Document);
       }
     }

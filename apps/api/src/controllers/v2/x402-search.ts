@@ -423,7 +423,7 @@ export async function x402SearchController(
                 scrapeInput: {
                   url: item.url!,
                   title: item.title || "",
-                  description: item.snippet || "",
+                  description: item.description || "",
                 },
               });
             } else {
