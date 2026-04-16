@@ -28,6 +28,10 @@ import {
   shouldExpandQuery,
   shouldClassifyIntent,
 } from "../lib/ai-search/preprocessor";
+import {
+  mapCategoriesToSearXNG,
+  applyQueryRewrite,
+} from "../lib/ai-search/category-mapper";
 
 interface SearchOptions {
   query: string;
@@ -153,12 +157,28 @@ export async function executeSearch(
         
         // Store AI metadata if classification is enabled
         if (shouldClassifyIntent(aiMode)) {
+          // Apply dual-track category mapping
+          const categoryMapping = mapCategoriesToSearXNG(
+            preprocessResult.firecrawlCategories,
+          );
+
+          // Merge AI-provided categories with mapped categories
+          const mergedCategories = [
+            ...(preprocessResult.searxngCategories || []),
+            ...(categoryMapping.searxngCategories || []),
+          ];
+
+          const mergedEngines = [
+            ...(preprocessResult.searxngEngines || []),
+            ...(categoryMapping.searxngEngines || []),
+          ];
+
           aiMetadata = {
             intent: preprocessResult.intent,
             confidence: preprocessResult.confidence,
             firecrawlCategories: preprocessResult.firecrawlCategories,
-            searxngCategories: preprocessResult.searxngCategories,
-            searxngEngines: preprocessResult.searxngEngines,
+            searxngCategories: [...new Set(mergedCategories)],
+            searxngEngines: [...new Set(mergedEngines)],
             timeRange: preprocessResult.timeRange,
           };
           logger.info("Intent classification completed", aiMetadata);
@@ -191,6 +211,10 @@ export async function executeSearch(
     location: options.location,
     type: searchTypes,
     enterprise: options.enterprise,
+    aiMode,
+    includeExtra: options.includeExtra,
+    aiMetadata,
+    queries: expandedQueries.length > 1 ? expandedQueries : undefined,
   })) as SearchV2Response;
 
   if (searchResponse.web && searchResponse.web.length > 0) {

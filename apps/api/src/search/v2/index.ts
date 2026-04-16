@@ -4,23 +4,9 @@ import { fire_engine_search_v2 } from "./fireEngine-v2";
 import { searxng_search } from "./searxng";
 import { ddgSearch } from "./ddgsearch";
 import { Logger } from "winston";
+import { aggregateResults } from "../../lib/ai-search/aggregator";
 
-export async function search({
-  query,
-  logger,
-  advanced = false,
-  num_results = 5,
-  tbs = undefined,
-  filter = undefined,
-  lang = "en",
-  country = "us",
-  location = undefined,
-  proxy = undefined,
-  sleep_interval = 0,
-  timeout = 5000,
-  type = undefined,
-  enterprise = undefined,
-}: {
+interface SearchOptions {
   query: string;
   logger: Logger;
   advanced?: boolean;
@@ -35,8 +21,118 @@ export async function search({
   timeout?: number;
   type?: SearchResultType | SearchResultType[];
   enterprise?: ("default" | "anon" | "zdr")[];
-}): Promise<SearchV2Response> {
+  aiMode?: string;
+  includeExtra?: boolean;
+  aiMetadata?: {
+    searxngCategories?: string[];
+    searxngEngines?: string[];
+    timeRange?: string;
+  };
+  queries?: string[]; // For parallel search
+}
+
+/**
+ * Parallel search dispatcher for Phase 2
+ * Executes multiple queries in parallel and aggregates results
+ */
+async function parallelSearch(
+  queries: string[],
+  options: SearchOptions,
+): Promise<SearchV2Response> {
+  const MAX_PARALLEL = 4;
+  const limitedQueries = queries.slice(0, MAX_PARALLEL);
+
+  options.logger.info(`Executing parallel search with ${limitedQueries.length} queries`);
+
+  const searchPromises = limitedQueries.map(async (query, index) => {
+    try {
+      const results = await searxng_search(query, {
+        num_results: options.num_results || 5,
+        tbs: options.tbs,
+        filter: options.filter,
+        lang: options.lang,
+        country: options.country,
+        location: options.location,
+        categories: options.aiMetadata?.searxngCategories,
+        engines: options.aiMetadata?.searxngEngines,
+        time_range: options.aiMetadata?.timeRange || undefined,
+        aiMode: options.aiMode,
+        includeExtra: options.includeExtra,
+      });
+
+      // Tag results with query index for deduplication
+      if (results.web) {
+        results.web = results.web.map(r => ({
+          ...r,
+          _queryIndex: index,
+          _query: query,
+        }));
+      }
+
+      return results;
+    } catch (error) {
+      options.logger.error(`Parallel search failed for query ${index}: ${query}`, { error });
+      return {};
+    }
+  });
+
+  const results = await Promise.all(searchPromises);
+
+  // Aggregate results from all queries
+  const aggregated: SearchV2Response = {};
+  const allWebResults: any[] = [];
+
+  for (const result of results) {
+    if (result.web && result.web.length > 0) {
+      allWebResults.push(...result.web);
+    }
+    if (result.extra && !aggregated.extra) {
+      aggregated.extra = result.extra;
+    }
+  }
+
+  // Deduplicate and rank aggregated results
+  if (allWebResults.length > 0) {
+    aggregated.web = aggregateResults(
+      allWebResults,
+      config.AI_SEARCH_MAX_RESULTS_FOR_RERANK || 20,
+    );
+  }
+
+  options.logger.info(`Parallel search completed with ${aggregated.web?.length || 0} results`);
+  return aggregated;
+}
+
+export async function search(options: SearchOptions): Promise<SearchV2Response> {
+  const {
+    query,
+    logger,
+    advanced = false,
+    num_results = 5,
+    tbs = undefined,
+    filter = undefined,
+    lang = "en",
+    country = "us",
+    location = undefined,
+    proxy = undefined,
+    sleep_interval = 0,
+    timeout = 5000,
+    type = undefined,
+    enterprise = undefined,
+    aiMode = "false",
+    includeExtra = false,
+    aiMetadata,
+    queries,
+  } = options;
+
   try {
+    // Use parallel search if AI mode is enabled and multiple queries are provided
+    if (aiMode !== "false" && queries && queries.length > 1) {
+      logger.info("Using parallel search for AI-enhanced query");
+      return await parallelSearch(queries, options);
+    }
+
+    // Original single query search path
     if (config.FIRE_ENGINE_BETA_URL) {
       logger.info("Using fire engine search");
       const results = await fire_engine_search_v2(query, {
@@ -62,6 +158,11 @@ export async function search({
         lang,
         country,
         location,
+        categories: aiMetadata?.searxngCategories,
+        engines: aiMetadata?.searxngEngines,
+        time_range: aiMetadata?.timeRange || undefined,
+        aiMode,
+        includeExtra,
       });
       if (results.web && results.web.length > 0) return results;
     }

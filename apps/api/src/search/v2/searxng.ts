@@ -1,4 +1,6 @@
 import axios from "axios";
+import http from "http";
+import https from "https";
 import { config } from "../../config";
 import { SearchV2Response, WebSearchResult } from "../../lib/entities";
 import { logger } from "../../lib/logger";
@@ -7,6 +9,24 @@ import {
   shouldIncludeExtra,
   formatExtraForResponse,
 } from "../../lib/ai-search/result-parser";
+
+// Create axios instance with keep-alive connection pool
+const axiosInstance = axios.create({
+  httpAgent: new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 100,
+    maxFreeSockets: 10,
+    timeout: 5000,
+  }),
+  httpsAgent: new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 100,
+    maxFreeSockets: 10,
+    timeout: 5000,
+  }),
+});
 
 interface SearchOptions {
   tbs?: string;
@@ -109,7 +129,7 @@ export async function searxng_search(
     // They can be handled through language parameter or engine-specific settings
 
     try {
-      const response = await axios.get(finalUrl, {
+      const response = await axiosInstance.get(finalUrl, {
         headers: {
           "Content-Type": "application/json",
         },
