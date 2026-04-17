@@ -16,6 +16,7 @@ import {
   createPortalSession,
   getCurrentBilling,
   updateAutoRecharge,
+  getPlans,
 } from "../controllers/dashboard/billing";
 import {
   getPlanConfigs,
@@ -26,7 +27,10 @@ import {
   addTeamCoupon,
 } from "../controllers/dashboard/admin";
 import { handleStripeWebhook } from "../controllers/dashboard/stripe-webhook";
-import { getCreditUsage, getCreditUsageHistorical } from "../controllers/dashboard/credit-usage";
+import {
+  getCreditUsage,
+  getCreditUsageHistorical,
+} from "../controllers/dashboard/credit-usage";
 import { getQueueStatus } from "../controllers/dashboard/queue-status";
 import { provisionAutumn } from "../controllers/dashboard/provision-autumn";
 import {
@@ -78,6 +82,7 @@ router.post("/billing/checkout", createCheckoutSession);
 router.post("/billing/portal", createPortalSession);
 router.get("/billing/current", getCurrentBilling);
 router.patch("/billing/auto-recharge", updateAutoRecharge);
+router.get("/billing/plans", getPlans);
 
 // Admin routes (require admin role check in controllers)
 router.get("/admin/plan-configs", getPlanConfigs);

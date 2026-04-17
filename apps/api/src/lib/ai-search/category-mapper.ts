@@ -6,7 +6,7 @@
 /**
  * Firecrawl category to SearXNG mapping configuration
  */
-export interface CategoryMapping {
+interface CategoryMapping {
   searxngCategories?: string[];
   searxngEngines?: string[];
   queryRewrite?: string; // Track A: query rewrite (site:/filetype: syntax)
@@ -45,9 +45,7 @@ const CATEGORY_MAPPING_TABLE: Record<string, CategoryMapping> = {
  * @param categories - Firecrawl categories array
  * @returns CategoryMapping with SearXNG categories, engines, and query rewrite
  */
-export function mapCategoriesToSearXNG(
-  categories?: string[],
-): CategoryMapping {
+export function mapCategoriesToSearXNG(categories?: string[]): CategoryMapping {
   if (!categories || categories.length === 0) {
     return {};
   }

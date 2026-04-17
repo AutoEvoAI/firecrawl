@@ -83,7 +83,7 @@ let searchRerankModelInstance: any = null;
  * This is isolated from the global MODEL_NAME configuration
  * Uses AI_SEARCH_LLM_* variables (same as preprocessor)
  */
-export function getSearchExpandModel() {
+function getSearchExpandModel() {
   if (searchExpandModelInstance) {
     return searchExpandModelInstance;
   }
@@ -126,7 +126,8 @@ export function getSearchRerankModel() {
   }
 
   const modelName = config.AI_SEARCH_RERANK_MODEL || "bge-reranker-v2-m3";
-  const providerName = config.AI_SEARCH_RERANK_PROVIDER as Provider || "ollama";
+  const providerName =
+    (config.AI_SEARCH_RERANK_PROVIDER as Provider) || "ollama";
   const endpoint = config.AI_SEARCH_RERANK_ENDPOINT;
   const apiKey = config.AI_SEARCH_RERANK_API_KEY;
 

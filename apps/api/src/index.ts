@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/node";
 import express, { NextFunction, Request, Response } from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import {
   getGenerateLlmsTxtQueue,
   getDeepResearchQueue,
@@ -19,6 +20,7 @@ import { adminRouter } from "./routes/admin";
 import { v1Router } from "./routes/v1";
 import { v2Router } from "./routes/v2";
 import { dashboardRouter } from "./routes/dashboard";
+import { authRouter } from "./routes/auth";
 import expressWs from "express-ws";
 import http from "node:http";
 import https from "node:https";
@@ -67,7 +69,24 @@ setSentryServiceTag("api");
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({ limit: "10mb" }));
 
-app.use(cors()); // Add this line to enable CORS
+app.use(cookieParser()); // Add cookie parser for session management
+
+// Configure CORS to support credentials with comma-separated origins
+const corsHost =
+  process.env.CORS_HOST || "http://localhost:3000,http://127.0.0.1:3000";
+const allowedOrigins = corsHost
+  .split(",")
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 
 app.use(responseTime());
 
@@ -109,6 +128,7 @@ app.use("/v1", v1Router);
 app.use("/v2", v2Router);
 app.use(adminRouter);
 app.use("/dashboard", dashboardRouter);
+app.use("/auth", authRouter);
 
 const DEFAULT_PORT = config.PORT;
 const HOST = config.HOST;

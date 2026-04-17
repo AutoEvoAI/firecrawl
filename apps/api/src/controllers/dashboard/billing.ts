@@ -101,14 +101,18 @@ export async function createPortalSession(
   }
 }
 
-export async function getCurrentBilling(req: DashboardAuthRequest, res: Response) {
+export async function getCurrentBilling(
+  req: DashboardAuthRequest,
+  res: Response,
+) {
   try {
     const { teamId } = req.auth!;
 
     // Get current subscription
     const { data: subscription } = await supabase
       .from("subscriptions")
-      .select(`
+      .select(
+        `
         *,
         plan_configs (
           id,
@@ -117,7 +121,8 @@ export async function getCurrentBilling(req: DashboardAuthRequest, res: Response
           concurrency,
           extract_concurrency
         )
-      `)
+      `,
+      )
       .eq("team_id", teamId)
       .in("status", ["active", "trialing"])
       .order("created_at", { ascending: false })
@@ -183,5 +188,64 @@ export async function updateAutoRecharge(
   } catch (error) {
     console.error("Update auto-recharge error:", error);
     res.status(500).json({ error: "Failed to update auto-recharge settings" });
+  }
+}
+
+export async function getPlans(req: DashboardAuthRequest, res: Response) {
+  try {
+    console.log("STRIPE_PRICE_ID_HOBBY:", config.STRIPE_PRICE_ID_HOBBY);
+    console.log(
+      "STRIPE_PRICE_ID_STANDARD_NEW:",
+      config.STRIPE_PRICE_ID_STANDARD_NEW,
+    );
+    console.log("STRIPE_PRICE_ID_GROWTH:", config.STRIPE_PRICE_ID_GROWTH);
+    console.log("STRIPE_PRICE_ID_SCALE:", config.STRIPE_PRICE_ID_SCALE);
+
+    const plans = [
+      {
+        id: "hobby",
+        name: "Hobby",
+        price: 20,
+        credits: 10000,
+        priceId: config.STRIPE_PRICE_ID_HOBBY,
+        priceIdYearly: config.STRIPE_PRICE_ID_HOBBY_YEARLY,
+      },
+      {
+        id: "standard",
+        name: "Standard",
+        price: 50,
+        credits: 100000,
+        priceId: config.STRIPE_PRICE_ID_STANDARD_NEW,
+        priceIdYearly: config.STRIPE_PRICE_ID_STANDARD_NEW_YEARLY,
+      },
+      {
+        id: "growth",
+        name: "Growth",
+        price: 200,
+        credits: 500000,
+        priceId: config.STRIPE_PRICE_ID_GROWTH,
+        priceIdYearly: config.STRIPE_PRICE_ID_GROWTH_YEARLY,
+      },
+      {
+        id: "scale",
+        name: "Scale",
+        price: 500,
+        credits: 2000000,
+        priceId: config.STRIPE_PRICE_ID_SCALE,
+        priceIdYearly: config.STRIPE_PRICE_ID_SCALE_YEARLY,
+      },
+    ];
+
+    console.log("All plans:", plans);
+
+    // Filter out plans without priceId
+    const availablePlans = plans.filter(plan => plan.priceId);
+
+    console.log("Available plans:", availablePlans);
+
+    res.json({ plans: availablePlans });
+  } catch (error) {
+    console.error("Get plans error:", error);
+    res.status(500).json({ error: "Failed to fetch plans" });
   }
 }
