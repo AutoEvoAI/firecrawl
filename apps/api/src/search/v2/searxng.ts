@@ -2,10 +2,7 @@ import axios from "axios";
 import http from "http";
 import https from "https";
 import { config } from "../../config";
-import {
-  SearchV2Response,
-  WebSearchResult,
-} from "../../lib/entities";
+import { SearchV2Response, WebSearchResult } from "../../lib/entities";
 import { logger } from "../../lib/logger";
 import {
   parseSearXNGResponse,
@@ -128,17 +125,53 @@ export async function searxng_search(
       }
     }
 
-    // Map safesearch
+    // Map safesearch (convert string values to numeric for SearXNG)
+    let safesearchValue = "0"; // default: no filtering
     if (options.safesearch) {
-      params.safesearch = options.safesearch;
+      if (options.safesearch === "moderate" || options.safesearch === "1") {
+        safesearchValue = "1";
+      } else if (
+        options.safesearch === "strict" ||
+        options.safesearch === "2"
+      ) {
+        safesearchValue = "2";
+      } else if (options.safesearch === "off" || options.safesearch === "0") {
+        safesearchValue = "0";
+      } else {
+        safesearchValue = options.safesearch;
+      }
     } else if (config.AI_SEARCH_SAFESEARCH) {
-      params.safesearch = config.AI_SEARCH_SAFESEARCH;
+      if (
+        config.AI_SEARCH_SAFESEARCH === "moderate" ||
+        config.AI_SEARCH_SAFESEARCH === "1"
+      ) {
+        safesearchValue = "1";
+      } else if (
+        config.AI_SEARCH_SAFESEARCH === "strict" ||
+        config.AI_SEARCH_SAFESEARCH === "2"
+      ) {
+        safesearchValue = "2";
+      } else if (
+        config.AI_SEARCH_SAFESEARCH === "off" ||
+        config.AI_SEARCH_SAFESEARCH === "0"
+      ) {
+        safesearchValue = "0";
+      } else {
+        safesearchValue = config.AI_SEARCH_SAFESEARCH;
+      }
     }
+    params.safesearch = safesearchValue;
 
     // Note: gl (country) and location are not directly supported by SearXNG
     // They can be handled through language parameter or engine-specific settings
 
     try {
+      logger.info("AI Search - SearXNG request", {
+        finalUrl,
+        params,
+        aiMode: options.aiMode,
+        includeExtra: options.includeExtra,
+      });
       const response = await axiosInstance.get(finalUrl, {
         headers: {
           "Content-Type": "application/json",
@@ -148,10 +181,24 @@ export async function searxng_search(
       });
 
       const data = response.data;
+      logger.info("AI Search - SearXNG response received", {
+        hasResults: Array.isArray(data.results),
+        resultCount: data.results?.length,
+        hasSuggestions: !!data.suggestions,
+        hasAnswers: !!data.answers,
+        hasCorrections: !!data.corrections,
+        hasInfoboxes: !!data.infoboxes,
+        dataKeys: Object.keys(data),
+      });
 
       if (data && Array.isArray(data.results)) {
         // Classify results into web/news/images buckets
         const classified = classifyResults(data.results);
+        logger.info("AI Search - Results classified", {
+          webCount: classified.web.length,
+          newsCount: classified.news.length,
+          imagesCount: classified.images.length,
+        });
 
         // Convert ClassifiedResult to WebSearchResult (preserving metadata)
         const webResults: WebSearchResult[] = classified.web.map(
@@ -168,6 +215,10 @@ export async function searxng_search(
           }),
         );
 
+        logger.info("AI Search - fetchPage returning", {
+          resultCount: webResults.length,
+          hasFullResponse: !!data,
+        });
         return {
           results: webResults,
           fullResponse: data as SearXNGResponse,
@@ -175,6 +226,7 @@ export async function searxng_search(
         };
       }
 
+      logger.info("AI Search - fetchPage returning null (no results)");
       return { results: [], fullResponse: null };
     } catch (error) {
       logger.error(`SearXNG search failed for page ${page}`, { error, params });
@@ -197,8 +249,17 @@ export async function searxng_search(
     let fullResponse: SearXNGResponse | null = null;
 
     for (let pageOffset = 0; pageOffset < pagesToFetch; pageOffset += 1) {
-      const { results: pageResults, fullResponse: pageResponse, classifiedResults: pageClassified } =
-        await fetchPage(startPage + pageOffset);
+      const {
+        results: pageResults,
+        fullResponse: pageResponse,
+        classifiedResults: pageClassified,
+      } = await fetchPage(startPage + pageOffset);
+
+      logger.info("AI Search - Page fetched", {
+        pageOffset,
+        resultCount: pageResults.length,
+        hasPageResponse: !!pageResponse,
+      });
 
       if (pageResults.length === 0) {
         break;
@@ -218,7 +279,7 @@ export async function searxng_search(
             category: r.category,
             publishedDate: r.publishedDate,
             author: r.author,
-          }))
+          })),
         );
 
         imagesResults = imagesResults.concat(
@@ -231,13 +292,14 @@ export async function searxng_search(
             category: r.category,
             publishedDate: r.publishedDate,
             author: r.author,
-          }))
+          })),
         );
       }
 
       // Keep the first page's full response for extra data
       if (pageResponse && !fullResponse) {
         fullResponse = pageResponse;
+        logger.info("AI Search - fullResponse set from page", { pageOffset });
       }
 
       if (webResults.length >= requestedResults) {
@@ -260,16 +322,59 @@ export async function searxng_search(
     }
 
     // Parse and include extra data if requested
+    logger.info("AI Search - Before extra data check", {
+      hasFullResponse: !!fullResponse,
+    });
     if (fullResponse) {
       const aiMode = options.aiMode || "false";
       const includeExtra = options.includeExtra || false;
+      const shouldInclude = shouldIncludeExtra(includeExtra, aiMode);
+      logger.info("AI Search - Checking if extra data should be included", {
+        aiMode,
+        includeExtra,
+        shouldInclude,
+      });
 
-      if (shouldIncludeExtra(includeExtra, aiMode)) {
+      if (shouldInclude) {
+        logger.info("AI Search - Parsing extra data from SearXNG response");
         const extra = parseSearXNGResponse(fullResponse);
-        response.extra = formatExtraForResponse(extra, includeExtra);
+        logger.info("AI Search - Formatting extra data for response", {
+          includeExtra,
+        });
+
+        // Phase 6: Expand extra fields to top level instead of nesting under 'extra'
+        const formattedExtra = formatExtraForResponse(extra, includeExtra);
+        if (formattedExtra.suggestions) {
+          response.suggestions = formattedExtra.suggestions;
+        }
+        if (formattedExtra.answers) {
+          response.answers = formattedExtra.answers;
+        }
+        if (formattedExtra.corrections) {
+          response.corrections = formattedExtra.corrections;
+        }
+        if (formattedExtra.infoboxes) {
+          response.knowledgeCards = formattedExtra.infoboxes;
+        }
+        logger.info("AI Search - Extra data added to response", {
+          hasSuggestions: !!response.suggestions,
+          hasAnswers: !!response.answers,
+          hasCorrections: !!response.corrections,
+          hasKnowledgeCards: !!response.knowledgeCards,
+        });
+      } else {
+        logger.info(
+          "AI Search - Extra data not included (shouldIncludeExtra returned false)",
+        );
       }
+    } else {
+      logger.info("AI Search - Extra data not included (fullResponse is null)");
     }
 
+    logger.info("AI Search - SearXNG search completed", {
+      webCount: response.web?.length,
+      hasExtra: !!response.extra,
+    });
     return response;
   } catch (error) {
     logger.error(`SearXNG search error`, { error });

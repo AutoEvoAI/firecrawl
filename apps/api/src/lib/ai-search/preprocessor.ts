@@ -9,6 +9,7 @@ import { config } from "../../config";
 import { logger } from "../logger";
 import { redisEvictConnection } from "../../services/redis";
 import crypto from "crypto";
+import { getSearchExpandModel } from "../generic-ai";
 
 /**
  * Helper function to add timeout to promises
@@ -16,7 +17,7 @@ import crypto from "crypto";
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  operation: string
+  operation: string,
 ): Promise<T> {
   const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
@@ -34,7 +35,7 @@ async function withTimeout<T>(
 function getPreprocessCacheKey(
   operation: "intent" | "expansion",
   query: string,
-  lang: string = "en"
+  lang: string = "en",
 ): string {
   const keyData = { operation, query: query.toLowerCase().trim(), lang };
   const keyString = JSON.stringify(keyData, Object.keys(keyData).sort());
@@ -45,9 +46,7 @@ function getPreprocessCacheKey(
 /**
  * Get cached LLM result
  */
-async function getCachedResult<T>(
-  cacheKey: string
-): Promise<T | null> {
+async function getCachedResult<T>(cacheKey: string): Promise<T | null> {
   try {
     const value = await redisEvictConnection.get(cacheKey);
     if (value) {
@@ -67,7 +66,7 @@ async function getCachedResult<T>(
 async function setCachedResult(
   cacheKey: string,
   result: any,
-  ttl: number = 3600
+  ttl: number = 3600,
 ): Promise<void> {
   try {
     await redisEvictConnection.setex(cacheKey, ttl, JSON.stringify(result));
@@ -137,25 +136,16 @@ export async function classifyIntent(
 }> {
   // Check cache first
   const cacheKey = getPreprocessCacheKey("intent", query, lang);
-  const cachedResult = await getCachedResult<z.infer<typeof intentSchema>>(
-    cacheKey
-  );
+  const cachedResult =
+    await getCachedResult<z.infer<typeof intentSchema>>(cacheKey);
   if (cachedResult) {
     return cachedResult;
   }
 
   try {
     // Build AI-specific configuration
-    const aiConfig: {
-      model: string;
-      schema: z.ZodSchema;
-      prompt: string;
-      temperature: number;
-      maxRetries: number;
-      apiKey?: string;
-      baseURL?: string;
-    } = {
-      model: config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini",
+    const aiConfig: any = {
+      model: getSearchExpandModel(),
       schema: intentSchema,
       prompt: `You are a search intent classifier. Given a user query, classify the search intent and suggest optimal search parameters. Language: ${lang}.
 
@@ -164,20 +154,10 @@ Classify this search query: "${query}"`,
       maxRetries: 1,
     };
 
-    // Add AI-specific API key if provided
-    if (config.AI_SEARCH_LLM_API_KEY) {
-      aiConfig.apiKey = config.AI_SEARCH_LLM_API_KEY;
-    }
-
-    // Add AI-specific base URL if provided
-    if (config.AI_SEARCH_LLM_BASE_URL) {
-      aiConfig.baseURL = config.AI_SEARCH_LLM_BASE_URL;
-    }
-
     const result = await withTimeout(
       generateObject(aiConfig),
       config.AI_SEARCH_LLM_TIMEOUT,
-      "Intent classification"
+      "Intent classification",
     );
 
     if (!result.object) {
@@ -185,7 +165,7 @@ Classify this search query: "${query}"`,
     }
 
     const classificationResult = result.object as any;
-    
+
     // Cache the result
     await setCachedResult(cacheKey, classificationResult, 3600); // 1 hour TTL
 
@@ -221,16 +201,8 @@ export async function expandQuery(
 
   try {
     // Build AI-specific configuration
-    const aiConfig: {
-      model: string;
-      schema: z.ZodSchema;
-      prompt: string;
-      temperature: number;
-      maxRetries: number;
-      apiKey?: string;
-      baseURL?: string;
-    } = {
-      model: config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini",
+    const aiConfig: any = {
+      model: getSearchExpandModel(),
       schema: expansionSchema,
       prompt: `You are a search query expansion expert. Given a user query, generate 2-3 alternative search queries that capture different aspects or phrasings of the same intent. Keep queries concise (under 10 words). Language: ${lang}.
 
@@ -239,20 +211,10 @@ Expand this search query: "${query}"`,
       maxRetries: 1,
     };
 
-    // Add AI-specific API key if provided
-    if (config.AI_SEARCH_LLM_API_KEY) {
-      aiConfig.apiKey = config.AI_SEARCH_LLM_API_KEY;
-    }
-
-    // Add AI-specific base URL if provided
-    if (config.AI_SEARCH_LLM_BASE_URL) {
-      aiConfig.baseURL = config.AI_SEARCH_LLM_BASE_URL;
-    }
-
     const result = await withTimeout(
       generateObject(aiConfig),
       config.AI_SEARCH_LLM_TIMEOUT,
-      "Query expansion"
+      "Query expansion",
     );
 
     if (!result.object) {

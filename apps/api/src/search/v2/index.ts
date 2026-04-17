@@ -43,7 +43,9 @@ async function parallelSearch(
   const MAX_PARALLEL = 4;
   const limitedQueries = queries.slice(0, MAX_PARALLEL);
 
-  options.logger.info(`Executing parallel search with ${limitedQueries.length} queries`);
+  options.logger.info(
+    `Executing parallel search with ${limitedQueries.length} queries`,
+  );
 
   const searchPromises = limitedQueries.map(async (query, index) => {
     try {
@@ -72,7 +74,10 @@ async function parallelSearch(
 
       return results;
     } catch (error) {
-      options.logger.error(`Parallel search failed for query ${index}: ${query}`, { error });
+      options.logger.error(
+        `Parallel search failed for query ${index}: ${query}`,
+        { error },
+      );
       return {};
     }
   });
@@ -87,8 +92,27 @@ async function parallelSearch(
     if (result.web && result.web.length > 0) {
       allWebResults.push(...result.web);
     }
-    if (result.extra && !aggregated.extra) {
-      aggregated.extra = result.extra;
+    if (result.news && result.news.length > 0) {
+      if (!aggregated.news) aggregated.news = [];
+      aggregated.news.push(...result.news);
+    }
+    if (result.images && result.images.length > 0) {
+      if (!aggregated.images) aggregated.images = [];
+      aggregated.images.push(...result.images);
+    }
+
+    // Merge Phase 6 top-level extra fields
+    if (result.suggestions && !aggregated.suggestions) {
+      aggregated.suggestions = result.suggestions;
+    }
+    if (result.answers && !aggregated.answers) {
+      aggregated.answers = result.answers;
+    }
+    if (result.corrections && !aggregated.corrections) {
+      aggregated.corrections = result.corrections;
+    }
+    if (result.knowledgeCards && !aggregated.knowledgeCards) {
+      aggregated.knowledgeCards = result.knowledgeCards;
     }
   }
 
@@ -110,11 +134,15 @@ async function parallelSearch(
     }
   }
 
-  options.logger.info(`Parallel search completed with ${aggregated.web?.length || 0} results`);
+  options.logger.info(
+    `Parallel search completed with ${aggregated.web?.length || 0} results`,
+  );
   return aggregated;
 }
 
-export async function search(options: SearchOptions): Promise<SearchV2Response> {
+export async function search(
+  options: SearchOptions,
+): Promise<SearchV2Response> {
   const {
     query,
     logger,

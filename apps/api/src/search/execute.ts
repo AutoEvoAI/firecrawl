@@ -139,22 +139,38 @@ export async function executeSearch(
   let expandedQueries: string[] = [query];
   let aiMetadata: any = undefined;
 
+  logger.info("AI Search - Starting search", {
+    query,
+    aiMode,
+    includeExtra: options.includeExtra,
+    hasLLMModel: !!config.AI_SEARCH_LLM_MODEL,
+  });
+
   if (aiMode !== "false" && config.AI_SEARCH_LLM_MODEL) {
     try {
       if (shouldExpandQuery(aiMode) || shouldClassifyIntent(aiMode)) {
-        logger.info("Running AI preprocessing", { aiMode });
-        const preprocessResult = await preprocessQuery(query, options.lang || "en");
-        
+        logger.info("AI Search - Running AI preprocessing", { aiMode });
+        const preprocessResult = await preprocessQuery(
+          query,
+          options.lang || "en",
+        );
+        logger.info("AI Search - Preprocessing result", {
+          hasExpandedQueries: !!preprocessResult.expandedQueries,
+          expandedQueryCount: preprocessResult.expandedQueries?.length,
+          intent: preprocessResult.intent,
+          confidence: preprocessResult.confidence,
+        });
+
         // Use expanded queries if expansion is enabled
         if (shouldExpandQuery(aiMode)) {
           expandedQueries = preprocessResult.expandedQueries;
-          logger.info("Query expansion completed", { 
-            originalQuery: query, 
+          logger.info("AI Search - Query expansion completed", {
+            originalQuery: query,
             expandedQueries,
-            count: expandedQueries.length 
+            count: expandedQueries.length,
           });
         }
-        
+
         // Store AI metadata if classification is enabled
         if (shouldClassifyIntent(aiMode)) {
           // Apply dual-track category mapping
@@ -181,7 +197,10 @@ export async function executeSearch(
             searxngEngines: [...new Set(mergedEngines)],
             timeRange: preprocessResult.timeRange,
           };
-          logger.info("Intent classification completed", aiMetadata);
+          logger.info(
+            "AI Search - Intent classification completed",
+            aiMetadata,
+          );
         }
       }
     } catch (error) {
@@ -217,6 +236,12 @@ export async function executeSearch(
     queries: expandedQueries.length > 1 ? expandedQueries : undefined,
   })) as SearchV2Response;
 
+  // Phase 6: Add aiMetadata to response if it exists and includeExtra is true
+  if (aiMetadata && options.includeExtra) {
+    searchResponse.aiMetadata = aiMetadata;
+    logger.info("AI Search - aiMetadata added to response", aiMetadata);
+  }
+
   if (searchResponse.web && searchResponse.web.length > 0) {
     searchResponse.web = searchResponse.web.map(result => ({
       ...result,
@@ -240,23 +265,39 @@ export async function executeSearch(
     config.AI_SEARCH_DEDUP_ENABLED &&
     searchResponse.web
   ) {
+    logger.info("AI Search - Applying aggregation", {
+      webCount: searchResponse.web.length,
+      dedupEnabled: config.AI_SEARCH_DEDUP_ENABLED,
+    });
     searchResponse.web = aggregateResults(
       searchResponse.web,
       config.AI_SEARCH_MAX_RESULTS_FOR_RERANK,
     );
+    logger.info("AI Search - Aggregation completed", {
+      webCount: searchResponse.web.length,
+    });
   }
 
   let totalResultsCount = 0;
 
   if (searchResponse.web && searchResponse.web.length > 0) {
+    logger.info("AI Search - Processing web results", {
+      count: searchResponse.web.length,
+      limit,
+    });
     if (searchResponse.web.length > limit) {
       searchResponse.web = searchResponse.web.slice(0, limit);
     }
     // Add relevanceScore if aiMode is enabled
     if (aiMode !== "false") {
+      logger.info("AI Search - Attaching relevanceScore to web results", {
+        aiMode,
+      });
       searchResponse.web = searchResponse.web.map((result, index) => ({
         ...result,
-        relevanceScore: result.searxngScore ? result.searxngScore * 100 : 100 - index,
+        relevanceScore: result.searxngScore
+          ? result.searxngScore * 100
+          : 100 - index,
       }));
     }
     totalResultsCount += searchResponse.web.length;
@@ -371,8 +412,12 @@ export async function executeSearch(
 
   // Filter extra fields based on includeExtra parameter (Phase 6)
   if (!options.includeExtra) {
-    delete searchResponse.extra;
+    delete searchResponse.suggestions;
+    delete searchResponse.answers;
+    delete searchResponse.corrections;
+    delete searchResponse.knowledgeCards;
     delete searchResponse.aiMetadata;
+    delete searchResponse.extra; // Remove deprecated nested field
   }
 
   // Store result in cache (skip for ZDR requests)

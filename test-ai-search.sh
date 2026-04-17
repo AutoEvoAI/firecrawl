@@ -432,6 +432,155 @@ run_test "Phase 0 - Final Fallback to DDG" \
     "success\|title\|url" \
     "Should fallback to DuckDuckGo if SearXNG returns no results"
 
+# ============================================================================
+# Phase 3: Result Parser Tests
+# ============================================================================
+
+# Test 45: Extra fields - suggestions with includeExtra
+run_test "Phase 3 - Extra Fields - suggestions" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"includeExtra\": true}" \
+    "success\|suggestions" \
+    "Should parse and return suggestions from SearXNG when includeExtra is true"
+
+# Test 46: Extra fields - answers with includeExtra
+run_test "Phase 3 - Extra Fields - answers" \
+    "calculate 2+2" \
+    "{\"query\": \"calculate 2+2\", \"limit\": 5, \"includeExtra\": true}" \
+    "success\|answers" \
+    "Should parse and return direct answers from SearXNG when includeExtra is true"
+
+# Test 47: Extra fields - corrections with includeExtra
+run_test "Phase 3 - Extra Fields - corrections" \
+    "machine lerning" \
+    "{\"query\": \"machine lerning\", \"limit\": 5, \"includeExtra\": true}" \
+    "success\|corrections" \
+    "Should parse and return spelling corrections from SearXNG when includeExtra is true"
+
+# Test 48: Extra fields - infoboxes with includeExtra
+run_test "Phase 3 - Extra Fields - infoboxes" \
+    "Albert Einstein" \
+    "{\"query\": \"Albert Einstein\", \"limit\": 5, \"includeExtra\": true}" \
+    "success\|infoboxes" \
+    "Should parse and return knowledge cards (infoboxes) from SearXNG when includeExtra is true"
+
+# Test 49: Extra fields - no extra when includeExtra false
+run_test "Phase 3 - Extra Fields - filtered" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"includeExtra\": false}" \
+    "success" \
+    "Should NOT return extra fields (suggestions, answers, etc.) when includeExtra is false"
+
+# ============================================================================
+# Phase 4: Aggregator Tests
+# ============================================================================
+
+# Test 50: Deduplication - same URLs from different engines
+run_test "Phase 4 - Deduplication" \
+    "react framework" \
+    "{\"query\": \"react framework\", \"limit\": 10}" \
+    "success" \
+    "Should deduplicate results with same URLs from different search engines"
+
+# Test 51: Coarse ranking - hitCount × searxngScore
+run_test "Phase 4 - Coarse Ranking" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 10}" \
+    "success" \
+    "Should rank results by hitCount × searxngScore (Phase 4 coarse ranking)"
+
+# Test 52: Category aggregation - web/news/images
+run_test "Phase 4 - Category Aggregation" \
+    "news today" \
+    "{\"query\": \"news today\", \"limit\": 10}" \
+    "success\|web\|news\|images" \
+    "Should aggregate results into web/news/images buckets based on category field"
+
+# Test 53: Prepare for reranker - top N results
+run_test "Phase 4 - Prepare for Reranker" \
+    "artificial intelligence" \
+    "{\"query\": \"artificial intelligence\", \"limit\": 20, \"aiMode\": \"rerank\"}" \
+    "success" \
+    "Should prepare top 20 results for reranker (config.AI_SEARCH_MAX_RESULTS_FOR_RERANK)"
+
+# ============================================================================
+# Phase 5: Reranker Tests (Jina API)
+# ============================================================================
+
+# Test 54: Jina rerank API - relevanceScore from API
+run_test "Phase 5 - Jina Rerank - relevanceScore" \
+    "machine learning algorithms" \
+    "{\"query\": \"machine learning algorithms\", \"limit\": 5, \"aiMode\": \"rerank\"}" \
+    "success\|relevanceScore" \
+    "Should return relevanceScore (0-1) from Jina rerank API for each result"
+
+# Test 55: Jina rerank API - reordering
+run_test "Phase 5 - Jina Rerank - reordering" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 10, \"aiMode\": \"rerank\"}" \
+    "success" \
+    "Should reorder results based on Jina rerank API relevance scores"
+
+# Test 56: Jina rerank API - timeout fallback
+run_test "Phase 5 - Jina Rerank - timeout fallback" \
+    "test timeout" \
+    "{\"query\": \"test timeout\", \"limit\": 5, \"aiMode\": \"rerank\"}" \
+    "success" \
+    "Should fallback to Phase 4 coarse ranking if Jina rerank API times out (3s timeout)"
+
+# Test 57: Jina rerank API - error fallback
+run_test "Phase 5 - Jina Rerank - error fallback" \
+    "test error" \
+    "{\"query\": \"test error\", \"limit\": 5, \"aiMode\": \"rerank\"}" \
+    "success" \
+    "Should fallback to Phase 4 coarse ranking if Jina rerank API returns error"
+
+# ============================================================================
+# Phase 6: Response Builder Tests
+# ============================================================================
+
+# Test 58: Response Builder - relevanceScore attachment
+run_test "Phase 6 - relevanceScore attachment" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success\|relevanceScore" \
+    "Should attach relevanceScore to each result when aiMode is enabled"
+
+# Test 59: Response Builder - limit results
+run_test "Phase 6 - limit results" \
+    "artificial intelligence" \
+    "{\"query\": \"artificial intelligence\", \"limit\": 3}" \
+    "success" \
+    "Should return exactly 3 results (top limit) after reranking"
+
+# Test 60: Response Builder - includeExtra filtering (true)
+run_test "Phase 6 - includeExtra filtering (true)" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"includeExtra\": true, \"aiMode\": \"full\"}" \
+    "success\|extra\|aiMetadata" \
+    "Should include extra and aiMetadata fields when includeExtra is true"
+
+# Test 61: Response Builder - includeExtra filtering (false)
+run_test "Phase 6 - includeExtra filtering (false)" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"includeExtra\": false, \"aiMode\": \"full\"}" \
+    "success" \
+    "Should NOT include extra and aiMetadata fields when includeExtra is false"
+
+# Test 62: Response Builder - cache write
+run_test "Phase 6 - cache write" \
+    "cache phase6 test 77777" \
+    "{\"query\": \"cache phase6 test 77777\", \"limit\": 5, \"aiMode\": \"full\"}" \
+    "success" \
+    "Should write final response to Redis cache (Phase 0 cache layer)"
+
+# Test 63: Response Builder - no relevanceScore when aiMode false
+run_test "Phase 6 - no relevanceScore (aiMode false)" \
+    "machine learning" \
+    "{\"query\": \"machine learning\", \"limit\": 5, \"aiMode\": \"false\"}" \
+    "success" \
+    "Should NOT attach relevanceScore when aiMode is false"
+
 echo ""
 echo "============================================================"
 echo "Test Summary"

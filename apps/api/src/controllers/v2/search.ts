@@ -130,6 +130,8 @@ export async function searchController(
         enterprise: req.body.enterprise,
         scrapeOptions: req.body.scrapeOptions,
         timeout: req.body.timeout,
+        aiMode: req.body.aiMode,
+        includeExtra: req.body.includeExtra,
       },
       {
         teamId: req.auth.team_id,

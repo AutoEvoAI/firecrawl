@@ -115,7 +115,7 @@ export class SearchResult {
   }
 }
 
-export interface ImageSearchResult {
+interface ImageSearchResult {
   title?: string;
   imageUrl?: string;
   imageWidth?: number;
@@ -125,7 +125,7 @@ export interface ImageSearchResult {
   answer?: string;
 }
 
-export interface NewsSearchResult {
+interface NewsSearchResult {
   title?: string;
   url?: string;
   snippet?: string;
@@ -182,8 +182,25 @@ export interface SearchV2Response {
   web?: WebSearchResult[];
   images?: WebSearchResult[];
   news?: WebSearchResult[];
-  extra?: SearXNGExtra;
+  // Phase 6: Top-level extra fields (not nested under 'extra')
+  suggestions?: string[];
+  answers?: Array<{
+    text: string;
+    source?: string;
+    url?: string;
+    engine?: string;
+  }>;
+  corrections?: string[];
+  knowledgeCards?: Array<{
+    title: string;
+    content: Record<string, any>;
+    img_src?: string;
+    urls?: Array<{ title: string; url: string }>;
+    engine?: string;
+  }>;
   aiMetadata?: AIMetadata;
+  // Keep 'extra' for backward compatibility (deprecated)
+  extra?: SearXNGExtra;
 }
 
 export interface ScrapeActionContent {
