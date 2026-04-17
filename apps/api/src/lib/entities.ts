@@ -164,6 +164,10 @@ export interface WebSearchResult {
   screenshot?: string;
   metadata?: Record<string, any>;
   answer?: string;
+
+  // Internal tags for deduplication tracking
+  _query?: string;
+  _queryIndex?: number;
 }
 
 export type SearchResultType = "web" | "images" | "news";

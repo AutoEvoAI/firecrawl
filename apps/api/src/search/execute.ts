@@ -32,6 +32,7 @@ import {
   mapCategoriesToSearXNG,
   applyQueryRewrite,
 } from "../lib/ai-search/category-mapper";
+import { rerankResults, shouldRerank } from "../lib/ai-search/reranker";
 
 interface SearchOptions {
   query: string;
@@ -136,7 +137,7 @@ export async function executeSearch(
   }
 
   // AI Preprocessing (query expansion and intent classification)
-  let expandedQueries: string[] = [query];
+  let expandedQueries: string[] = [];
   let aiMetadata: any = undefined;
 
   logger.info("AI Search - Starting search", {
@@ -146,7 +147,33 @@ export async function executeSearch(
     hasLLMModel: !!config.AI_SEARCH_LLM_MODEL,
   });
 
+  const searchTypes = [...new Set(sources.map((s: any) => s.type))];
+  const { query: searchQuery, categoryMap } = buildSearchQuery(
+    query,
+    categories,
+  );
+
+  let searchResponse: SearchV2Response = {};
+
   if (aiMode !== "false" && config.AI_SEARCH_LLM_MODEL) {
+    // Phase 2 Pipeline optimization: Launch original query to SearXNG IMMEDIATELY
+    const originalSearchPromise = search({
+      query: searchQuery,
+      logger,
+      advanced: false,
+      num_results: num_results_buffer,
+      tbs: options.tbs,
+      filter: options.filter,
+      lang: options.lang,
+      country: options.country,
+      location: options.location,
+      type: searchTypes,
+      enterprise: options.enterprise,
+      aiMode,
+      includeExtra: options.includeExtra,
+      // No aiMetadata for original query as it hasn't been generated yet
+    });
+
     try {
       if (shouldExpandQuery(aiMode) || shouldClassifyIntent(aiMode)) {
         logger.info("AI Search - Running AI preprocessing", { aiMode });
@@ -162,8 +189,10 @@ export async function executeSearch(
         });
 
         // Use expanded queries if expansion is enabled
-        if (shouldExpandQuery(aiMode)) {
-          expandedQueries = preprocessResult.expandedQueries;
+        if (shouldExpandQuery(aiMode) && preprocessResult.expandedQueries) {
+          expandedQueries = preprocessResult.expandedQueries.filter(
+            q => q !== query && q !== searchQuery,
+          );
           logger.info("AI Search - Query expansion completed", {
             originalQuery: query,
             expandedQueries,
@@ -178,7 +207,6 @@ export async function executeSearch(
             preprocessResult.firecrawlCategories,
           );
 
-          // Merge AI-provided categories with mapped categories
           const mergedCategories = [
             ...(preprocessResult.searxngCategories || []),
             ...(categoryMapping.searxngCategories || []),
@@ -204,37 +232,97 @@ export async function executeSearch(
         }
       }
     } catch (error) {
-      logger.warn("AI preprocessing failed, using original query", { error });
-      // Fallback to original query if preprocessing fails
-      expandedQueries = [query];
+      logger.warn("AI preprocessing failed", { error });
     }
+
+    // Launch expanded queries in parallel
+    const searchPromises: Promise<SearchV2Response>[] = [originalSearchPromise];
+
+    if (expandedQueries.length > 0) {
+      // Limit to max 3 expanded queries
+      const limitedExpandedQueries = expandedQueries.slice(0, 3);
+      const expandedPromises = limitedExpandedQueries.map(q =>
+        search({
+          query: q,
+          logger,
+          advanced: false,
+          num_results: num_results_buffer,
+          tbs: options.tbs,
+          filter: options.filter,
+          lang: options.lang,
+          country: options.country,
+          location: options.location,
+          type: searchTypes,
+          enterprise: options.enterprise,
+          aiMode,
+          includeExtra: options.includeExtra,
+          aiMetadata, // Pass AI inferred metadata to expanded queries
+        }),
+      );
+      searchPromises.push(...expandedPromises);
+    }
+
+    // Wait for all searches
+    const results = await Promise.all(searchPromises);
+
+    // Aggregate results from original and expanded queries
+    const allWebResults: any[] = [];
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const q = i === 0 ? searchQuery : expandedQueries[i - 1];
+
+      if (result.web && result.web.length > 0) {
+        // Tag with query info for deduplication visibility
+        result.web.forEach(r => {
+          r._query = q;
+        });
+        allWebResults.push(...result.web);
+      }
+
+      if (result.news && result.news.length > 0) {
+        if (!searchResponse.news) searchResponse.news = [];
+        searchResponse.news.push(...result.news);
+      }
+      if (result.images && result.images.length > 0) {
+        if (!searchResponse.images) searchResponse.images = [];
+        searchResponse.images.push(...result.images);
+      }
+
+      // Merge Phase 6 top-level extra fields
+      if (result.suggestions && !searchResponse.suggestions)
+        searchResponse.suggestions = result.suggestions;
+      if (result.answers && !searchResponse.answers)
+        searchResponse.answers = result.answers;
+      if (result.corrections && !searchResponse.corrections)
+        searchResponse.corrections = result.corrections;
+      if (result.knowledgeCards && !searchResponse.knowledgeCards)
+        searchResponse.knowledgeCards = result.knowledgeCards;
+    }
+
+    // Process web results (deduplicate and rerank)
+    if (allWebResults.length > 0) {
+      searchResponse.web = allWebResults;
+    }
+  } else {
+    // Non-AI path
+    logger.info("Searching for results");
+    searchResponse = (await search({
+      query: searchQuery,
+      logger,
+      advanced: false,
+      num_results: num_results_buffer,
+      tbs: options.tbs,
+      filter: options.filter,
+      lang: options.lang,
+      country: options.country,
+      location: options.location,
+      type: searchTypes,
+      enterprise: options.enterprise,
+      aiMode,
+      includeExtra: options.includeExtra,
+    })) as SearchV2Response;
   }
-
-  logger.info("Searching for results");
-
-  const searchTypes = [...new Set(sources.map((s: any) => s.type))];
-  const { query: searchQuery, categoryMap } = buildSearchQuery(
-    query,
-    categories,
-  );
-
-  const searchResponse = (await search({
-    query: searchQuery,
-    logger,
-    advanced: false,
-    num_results: num_results_buffer,
-    tbs: options.tbs,
-    filter: options.filter,
-    lang: options.lang,
-    country: options.country,
-    location: options.location,
-    type: searchTypes,
-    enterprise: options.enterprise,
-    aiMode,
-    includeExtra: options.includeExtra,
-    aiMetadata,
-    queries: expandedQueries.length > 1 ? expandedQueries : undefined,
-  })) as SearchV2Response;
 
   // Phase 6: Add aiMetadata to response if it exists and includeExtra is true
   if (aiMetadata && options.includeExtra) {
@@ -258,12 +346,12 @@ export async function executeSearch(
     }));
   }
 
-  // Aggregate results (deduplicate, coarse rank, prepare for reranker)
-  // Only apply aggregation when AI features are enabled
+  // Aggregate results (deduplicate, coarse rank)
   if (
     aiMode !== "false" &&
     config.AI_SEARCH_DEDUP_ENABLED &&
-    searchResponse.web
+    searchResponse.web &&
+    searchResponse.web.length > 0
   ) {
     logger.info("AI Search - Applying aggregation", {
       webCount: searchResponse.web.length,
@@ -278,6 +366,21 @@ export async function executeSearch(
     });
   }
 
+  // Apply AI reranking if enabled (Must happen AFTER aggregation/coarse rank)
+  if (
+    aiMode !== "false" &&
+    searchResponse.web &&
+    searchResponse.web.length > 0 &&
+    shouldRerank(aiMode)
+  ) {
+    logger.info("AI Search - Applying AI reranking");
+    searchResponse.web = await rerankResults(
+      query,
+      searchResponse.web,
+      limit, // Ask reranker for final requested limit
+    );
+  }
+
   let totalResultsCount = 0;
 
   if (searchResponse.web && searchResponse.web.length > 0) {
@@ -288,16 +391,16 @@ export async function executeSearch(
     if (searchResponse.web.length > limit) {
       searchResponse.web = searchResponse.web.slice(0, limit);
     }
-    // Add relevanceScore if aiMode is enabled
+    // Add fallback relevanceScore if not already provided by reranker
     if (aiMode !== "false") {
-      logger.info("AI Search - Attaching relevanceScore to web results", {
-        aiMode,
-      });
       searchResponse.web = searchResponse.web.map((result, index) => ({
         ...result,
-        relevanceScore: result.searxngScore
-          ? result.searxngScore * 100
-          : 100 - index,
+        relevanceScore:
+          result.relevanceScore !== undefined
+            ? result.relevanceScore
+            : result.searxngScore
+              ? result.searxngScore * 100
+              : 100 - index,
       }));
     }
     totalResultsCount += searchResponse.web.length;
