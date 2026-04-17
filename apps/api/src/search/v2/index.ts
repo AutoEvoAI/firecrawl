@@ -99,9 +99,9 @@ export async function search(
     if (ddgResults.web && ddgResults.web.length > 0) return ddgResults;
 
     // Fallback to empty response
-    return {};
+    return { web: [], images: [], news: [] };
   } catch (error) {
     logger.error(`Error in search function`, { error });
-    return {};
+    return { web: [], images: [], news: [] };
   }
 }

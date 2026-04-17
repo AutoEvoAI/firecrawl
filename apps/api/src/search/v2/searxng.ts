@@ -177,7 +177,7 @@ export async function searxng_search(
           "Content-Type": "application/json",
         },
         params: params,
-        timeout: 1200, // 1200ms timeout
+        timeout: 5000, // Increased timeout to 5000ms to handle slow search engine responses
       });
 
       const data = response.data;
@@ -378,6 +378,6 @@ export async function searxng_search(
     return response;
   } catch (error) {
     logger.error(`SearXNG search error`, { error });
-    return {};
+    return { web: [], images: [], news: [] };
   }
 }

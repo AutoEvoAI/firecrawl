@@ -154,7 +154,11 @@ export async function executeSearch(
     categories,
   );
 
-  let searchResponse: SearchV2Response = {};
+  let searchResponse: SearchV2Response = {
+    web: [],
+    images: [],
+    news: [],
+  };
 
   if (aiMode !== "false" && config.AI_SEARCH_LLM_MODEL) {
     // Phase 2 Pipeline optimization: Launch original query to SearXNG IMMEDIATELY

@@ -111,7 +111,7 @@ async function rerankWithJina(
   const rerankedResults: WebSearchResult[] = data.results
     .map(item => ({
       ...results[item.index],
-      relevanceScore: item.relevance_score,
+      relevanceScore: Math.max(0, Math.min(1, item.relevance_score)),
     }))
     .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
 
