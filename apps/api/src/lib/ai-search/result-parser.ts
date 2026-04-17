@@ -85,18 +85,26 @@ export function parseSearXNGResponse(
   const extra: SearXNGExtra = {};
 
   // Parse suggestions
-  if (rawResponse.suggestions && Array.isArray(rawResponse.suggestions)) {
+  if (
+    rawResponse.suggestions &&
+    Array.isArray(rawResponse.suggestions) &&
+    rawResponse.suggestions.length > 0
+  ) {
     extra.suggestions = rawResponse.suggestions;
   }
 
   // Parse corrections
-  if (rawResponse.corrections && Array.isArray(rawResponse.corrections)) {
+  if (
+    rawResponse.corrections &&
+    Array.isArray(rawResponse.corrections) &&
+    rawResponse.corrections.length > 0
+  ) {
     extra.corrections = rawResponse.corrections;
   }
 
   // Parse answers (normalize different answer formats)
   if (rawResponse.answers && Array.isArray(rawResponse.answers)) {
-    extra.answers = rawResponse.answers
+    const answers = rawResponse.answers
       .filter(a => a.content || a.title)
       .map(a => ({
         text: a.content || a.title || "",
@@ -104,11 +112,14 @@ export function parseSearXNGResponse(
         url: a.url,
         engine: a.engine,
       }));
+    if (answers.length > 0) {
+      extra.answers = answers;
+    }
   }
 
   // Parse infoboxes
   if (rawResponse.infoboxes && Array.isArray(rawResponse.infoboxes)) {
-    extra.infoboxes = rawResponse.infoboxes
+    const infoboxes = rawResponse.infoboxes
       .filter(i => i.infobox || i.content)
       .map(i => ({
         title: i.infobox || "Infobox",
@@ -117,17 +128,25 @@ export function parseSearXNGResponse(
         urls: i.urls,
         engine: i.engine,
       }));
+    if (infoboxes.length > 0) {
+      extra.infoboxes = infoboxes;
+    }
   }
 
   // Parse engine data
-  if (rawResponse.engine_data && typeof rawResponse.engine_data === "object") {
+  if (
+    rawResponse.engine_data &&
+    typeof rawResponse.engine_data === "object" &&
+    Object.keys(rawResponse.engine_data).length > 0
+  ) {
     extra.engineData = rawResponse.engine_data;
   }
 
   // Parse unresponsive engines
   if (
     rawResponse.unresponsive_engines &&
-    Array.isArray(rawResponse.unresponsive_engines)
+    Array.isArray(rawResponse.unresponsive_engines) &&
+    rawResponse.unresponsive_engines.length > 0
   ) {
     extra.unresponsiveEngines = rawResponse.unresponsive_engines;
   }
@@ -142,11 +161,7 @@ export function parseSearXNGResponse(
  */
 export function classifyResult(result: any): ResultCategory {
   // Images: category === "images" or has img_src
-  if (
-    result.category === "images" ||
-    result.img_src ||
-    result.thumbnail_src
-  ) {
+  if (result.category === "images" || result.img_src || result.thumbnail_src) {
     return "images";
   }
 
@@ -177,7 +192,7 @@ function isNewsEngine(engine?: string): boolean {
     "newsboat",
     "newspaper",
   ];
-  return newsEngines.some((ne) => engine.toLowerCase().includes(ne));
+  return newsEngines.some(ne => engine.toLowerCase().includes(ne));
 }
 
 /**
@@ -185,9 +200,7 @@ function isNewsEngine(engine?: string): boolean {
  * @param results - Array of SearXNG results
  * @returns Classified results separated by category
  */
-export function classifyResults(
-  results: any[],
-): {
+export function classifyResults(results: any[]): {
   web: ClassifiedResult[];
   news: ClassifiedResult[];
   images: ClassifiedResult[];
@@ -247,11 +260,14 @@ export function mergeSuggestions(
  * @returns Whether to include extra data
  */
 export function shouldIncludeExtra(
-  includeExtra: boolean = false,
+  includeExtra: boolean | string[] = false,
   aiMode: string = "false",
 ): boolean {
-  // Always include extra if explicitly requested
-  if (includeExtra) {
+  // Always include extra if explicitly requested (boolean true or non-empty array)
+  if (
+    includeExtra === true ||
+    (Array.isArray(includeExtra) && includeExtra.length > 0)
+  ) {
     return true;
   }
 
@@ -271,11 +287,36 @@ export function shouldIncludeExtra(
  */
 export function formatExtraForResponse(
   extra: SearXNGExtra,
-  includeExtra: boolean = false,
+  includeExtra: boolean | string[] = false,
 ): Partial<SearXNGExtra> {
-  if (!includeExtra) {
+  if (includeExtra === false) {
     return {};
   }
 
-  return extra;
+  if (includeExtra === true) {
+    return extra;
+  }
+
+  if (Array.isArray(includeExtra)) {
+    const formatted: Partial<SearXNGExtra> = {};
+    if (includeExtra.includes("suggestions")) {
+      formatted.suggestions = extra.suggestions;
+    }
+    if (includeExtra.includes("answers")) {
+      formatted.answers = extra.answers;
+    }
+    if (includeExtra.includes("corrections")) {
+      formatted.corrections = extra.corrections;
+    }
+    if (
+      includeExtra.includes("knowledgeCards") ||
+      includeExtra.includes("infoboxes")
+    ) {
+      formatted.infoboxes = extra.infoboxes;
+    }
+    // aiMetadata is handled separately in executeSearch.ts
+    return formatted;
+  }
+
+  return {};
 }

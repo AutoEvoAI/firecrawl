@@ -48,7 +48,7 @@ interface SearchOptions {
   scrapeOptions?: ScrapeOptions;
   timeout: number;
   aiMode?: string;
-  includeExtra?: boolean;
+  includeExtra?: boolean | string[];
 }
 
 interface SearchContext {
@@ -98,6 +98,7 @@ export async function executeSearch(
     billing,
   } = context;
 
+  const startTime = Date.now();
   const num_results_buffer = Math.floor(limit * 2);
 
   // Cache check (skip for ZDR requests)
@@ -224,6 +225,8 @@ export async function executeSearch(
             searxngCategories: [...new Set(mergedCategories)],
             searxngEngines: [...new Set(mergedEngines)],
             timeRange: preprocessResult.timeRange,
+            expandedQueries: preprocessResult.expandedQueries || [],
+            rerankModel: config.AI_SEARCH_RERANK_MODEL,
           };
           logger.info(
             "AI Search - Intent classification completed",
@@ -326,6 +329,7 @@ export async function executeSearch(
 
   // Phase 6: Add aiMetadata to response if it exists and includeExtra is true
   if (aiMetadata && options.includeExtra) {
+    aiMetadata.processingTimeMs = Date.now() - startTime;
     searchResponse.aiMetadata = aiMetadata;
     logger.info("AI Search - aiMetadata added to response", aiMetadata);
   }
@@ -357,10 +361,14 @@ export async function executeSearch(
       webCount: searchResponse.web.length,
       dedupEnabled: config.AI_SEARCH_DEDUP_ENABLED,
     });
+    const totalCandidates = searchResponse.web.length;
     searchResponse.web = aggregateResults(
       searchResponse.web,
       config.AI_SEARCH_MAX_RESULTS_FOR_RERANK,
     );
+    if (aiMetadata) {
+      aiMetadata.totalCandidates = totalCandidates;
+    }
     logger.info("AI Search - Aggregation completed", {
       webCount: searchResponse.web.length,
     });
@@ -399,8 +407,8 @@ export async function executeSearch(
           result.relevanceScore !== undefined
             ? result.relevanceScore
             : result.searxngScore
-              ? result.searxngScore * 100
-              : 100 - index,
+              ? Math.min(1, result.searxngScore)
+              : Math.max(0, 1 - index / (searchResponse.web?.length || 1)),
       }));
     }
     totalResultsCount += searchResponse.web.length;
@@ -414,7 +422,10 @@ export async function executeSearch(
     if (aiMode !== "false") {
       searchResponse.images = searchResponse.images.map((result, index) => ({
         ...result,
-        relevanceScore: 100 - index,
+        relevanceScore: Math.max(
+          0,
+          1 - index / (searchResponse.images?.length || 1),
+        ),
       }));
     }
     totalResultsCount += searchResponse.images.length;
@@ -428,7 +439,10 @@ export async function executeSearch(
     if (aiMode !== "false") {
       searchResponse.news = searchResponse.news.map((result, index) => ({
         ...result,
-        relevanceScore: 100 - index,
+        relevanceScore: Math.max(
+          0,
+          1 - index / (searchResponse.news?.length || 1),
+        ),
       }));
     }
     totalResultsCount += searchResponse.news.length;
@@ -514,13 +528,28 @@ export async function executeSearch(
   }).catch(err => logger.warn("Search tracking failed", { error: err }));
 
   // Filter extra fields based on includeExtra parameter (Phase 6)
-  if (!options.includeExtra) {
+  const includeExtra = options.includeExtra;
+  if (!includeExtra) {
     delete searchResponse.suggestions;
     delete searchResponse.answers;
     delete searchResponse.corrections;
     delete searchResponse.knowledgeCards;
     delete searchResponse.aiMetadata;
     delete searchResponse.extra; // Remove deprecated nested field
+  } else if (Array.isArray(includeExtra)) {
+    if (!includeExtra.includes("suggestions"))
+      delete searchResponse.suggestions;
+    if (!includeExtra.includes("answers")) delete searchResponse.answers;
+    if (!includeExtra.includes("corrections"))
+      delete searchResponse.corrections;
+    if (
+      !includeExtra.includes("knowledgeCards") &&
+      !includeExtra.includes("infoboxes")
+    ) {
+      delete searchResponse.knowledgeCards;
+    }
+    if (!includeExtra.includes("aiMetadata")) delete searchResponse.aiMetadata;
+    delete searchResponse.extra;
   }
 
   // Store result in cache (skip for ZDR requests)

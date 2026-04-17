@@ -287,5 +287,5 @@ export function shouldExpandQuery(aiMode: string = "false"): boolean {
  * @returns Whether to apply intent classification
  */
 export function shouldClassifyIntent(aiMode: string = "false"): boolean {
-  return aiMode === "full" || aiMode === "auto";
+  return aiMode === "expand" || aiMode === "full" || aiMode === "auto";
 }

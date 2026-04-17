@@ -21,7 +21,7 @@ interface SearchOptions {
   type?: SearchResultType | SearchResultType[];
   enterprise?: ("default" | "anon" | "zdr")[];
   aiMode?: string;
-  includeExtra?: boolean;
+  includeExtra?: boolean | string[];
   aiMetadata?: {
     searxngCategories?: string[];
     searxngEngines?: string[];

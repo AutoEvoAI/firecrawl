@@ -89,6 +89,7 @@ export function getSearchExpandModel() {
   }
 
   const modelName = config.AI_SEARCH_LLM_MODEL || "gpt-4o-mini";
+  const providerName = (config.AI_SEARCH_LLM_PROVIDER as Provider) || "openai";
   const endpoint = config.AI_SEARCH_LLM_BASE_URL;
   const apiKey = config.AI_SEARCH_LLM_API_KEY;
 
@@ -96,19 +97,22 @@ export function getSearchExpandModel() {
 
   if (endpoint) {
     // Create independent provider instance with custom endpoint
-    if (endpoint.includes("openai") || endpoint.includes("vllm")) {
+    if (providerName === "openai") {
       provider = createOpenAI({
         baseURL: endpoint,
         apiKey: apiKey || config.OPENAI_API_KEY,
       });
-    } else {
+    } else if (providerName === "ollama") {
       provider = createOllama({
         baseURL: endpoint,
       });
+    } else {
+      // Fallback to list
+      provider = providerList[providerName];
     }
   } else {
     // Reuse global provider instance
-    provider = providerList[defaultProvider];
+    provider = providerList[providerName] || providerList[defaultProvider];
   }
 
   // Get the model (directly use modelName, not affected by MODEL_NAME override)
@@ -126,7 +130,8 @@ export function getSearchRerankModel() {
   }
 
   const modelName = config.AI_SEARCH_RERANK_MODEL || "bge-reranker-v2-m3";
-  const providerName = config.AI_SEARCH_RERANK_PROVIDER as Provider || "ollama";
+  const providerName =
+    (config.AI_SEARCH_RERANK_PROVIDER as Provider) || "ollama";
   const endpoint = config.AI_SEARCH_RERANK_ENDPOINT;
   const apiKey = config.AI_SEARCH_RERANK_API_KEY;
 

@@ -65,7 +65,7 @@ describe("result-parser", () => {
         engine_data: {},
       };
       const result = parseSearXNGResponse(response);
-      expect(result.answers).toHaveLength(0);
+      expect(result.answers).toBeUndefined();
     });
 
     it("should parse infoboxes", () => {

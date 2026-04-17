@@ -1715,7 +1715,10 @@ export const searchRequestSchema = z
       .enum(["false", "expand", "rerank", "full", "auto"])
       .optional()
       .default("false"),
-    includeExtra: z.boolean().optional().default(false),
+    includeExtra: z
+      .union([z.boolean(), z.array(z.string())])
+      .optional()
+      .default(false),
     __agentInterop: z
       .object({
         auth: z.string(),

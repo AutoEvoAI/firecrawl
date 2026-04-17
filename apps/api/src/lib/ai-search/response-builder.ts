@@ -39,30 +39,31 @@ export function buildSearchResponse(
  * Add AI metadata to search response
  * @param results - Search results
  * @param aiMode - AI mode used
- * @param processingTime - Total processing time
+ * @param processingTimeMs - Total processing time
  * @param phaseTimes - Breakdown of time per phase
  * @param cacheHit - Whether cache was used
- * @param expandedQuery - Query after expansion
+ * @param expandedQueries - Query after expansion
  * @param intent - Classified intent
  * @param reranked - Whether reranking was performed
  * @returns AIMetadata object
  */
 export function addAiMetadata(params: {
   aiMode?: string;
-  processingTime?: number;
+  processingTimeMs?: number;
   phaseTimes?: Record<string, number>;
   cacheHit?: boolean;
-  expandedQuery?: string;
+  expandedQueries?: string[];
   intent?: string;
   reranked?: boolean;
 }): AIMetadata {
   const metadata: AIMetadata = {};
 
   if (params.aiMode) metadata.aiMode = params.aiMode;
-  if (params.processingTime) metadata.processingTime = params.processingTime;
+  if (params.processingTimeMs)
+    metadata.processingTimeMs = params.processingTimeMs;
   if (params.phaseTimes) metadata.phaseTimes = params.phaseTimes;
   if (params.cacheHit !== undefined) metadata.cacheHit = params.cacheHit;
-  if (params.expandedQuery) metadata.expandedQuery = params.expandedQuery;
+  if (params.expandedQueries) metadata.expandedQueries = params.expandedQueries;
   if (params.intent) metadata.intent = params.intent;
   if (params.reranked !== undefined) metadata.reranked = params.reranked;
 

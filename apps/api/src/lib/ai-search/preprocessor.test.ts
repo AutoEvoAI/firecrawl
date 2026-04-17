@@ -181,8 +181,8 @@ describe("preprocessor", () => {
       expect(shouldClassifyIntent("auto")).toBe(true);
     });
 
-    it("should return false for expand mode", () => {
-      expect(shouldClassifyIntent("expand")).toBe(false);
+    it("should return true for expand mode", () => {
+      expect(shouldClassifyIntent("expand")).toBe(true);
     });
 
     it("should return false for rerank mode", () => {
@@ -207,7 +207,7 @@ describe("preprocessor", () => {
         searxngCategories: ["general"],
       };
       (redisEvictConnection.get as jest.Mock).mockResolvedValue(
-        JSON.stringify(cachedResult)
+        JSON.stringify(cachedResult),
       );
 
       const result = await classifyIntent("test query");
@@ -234,7 +234,7 @@ describe("preprocessor", () => {
     it("should use cached result for expandQuery", async () => {
       const cachedResult = ["expanded query 1", "expanded query 2"];
       (redisEvictConnection.get as jest.Mock).mockResolvedValue(
-        JSON.stringify(cachedResult)
+        JSON.stringify(cachedResult),
       );
 
       const result = await expandQuery("test query");
@@ -257,7 +257,7 @@ describe("preprocessor", () => {
 
     it("should handle cache errors gracefully for classifyIntent", async () => {
       (redisEvictConnection.get as jest.Mock).mockRejectedValue(
-        new Error("Redis error")
+        new Error("Redis error"),
       );
       mockedGenerateObject.mockResolvedValue({
         object: {
@@ -274,7 +274,7 @@ describe("preprocessor", () => {
 
     it("should handle cache errors gracefully for expandQuery", async () => {
       (redisEvictConnection.get as jest.Mock).mockRejectedValue(
-        new Error("Redis error")
+        new Error("Redis error"),
       );
       mockedGenerateObject.mockResolvedValue({
         object: {
@@ -293,8 +293,8 @@ describe("preprocessor", () => {
       mockedGenerateObject.mockImplementation(
         () =>
           new Promise(resolve =>
-            setTimeout(() => resolve({ object: {} } as any), 200)
-          )
+            setTimeout(() => resolve({ object: {} } as any), 200),
+          ),
       );
 
       const result = await classifyIntent("test query");
@@ -306,8 +306,8 @@ describe("preprocessor", () => {
       mockedGenerateObject.mockImplementation(
         () =>
           new Promise(resolve =>
-            setTimeout(() => resolve({ object: {} } as any), 200)
-          )
+            setTimeout(() => resolve({ object: {} } as any), 200),
+          ),
       );
 
       const result = await expandQuery("test query");

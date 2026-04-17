@@ -43,7 +43,7 @@ interface SearchOptions {
   time_range?: string;
   safesearch?: string;
   aiMode?: string;
-  includeExtra?: boolean;
+  includeExtra?: boolean | string[];
 }
 
 interface SearXNGResult {

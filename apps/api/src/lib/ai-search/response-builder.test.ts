@@ -46,7 +46,7 @@ describe("response-builder", () => {
           { url: "http://example.com", title: "Test", description: "Desc" },
         ],
       };
-      const aiMetadata = { aiMode: "full", processingTime: 1000 };
+      const aiMetadata = { aiMode: "full", processingTimeMs: 1000 };
       const response = buildSearchResponse(results, null, false, aiMetadata);
       expect((response as any).aiMetadata).toEqual(aiMetadata);
     });
@@ -66,19 +66,19 @@ describe("response-builder", () => {
     it("should add all provided metadata fields", () => {
       const metadata = addAiMetadata({
         aiMode: "full",
-        processingTime: 1000,
+        processingTimeMs: 1000,
         phaseTimes: { cache: 50, search: 200 },
         cacheHit: true,
-        expandedQuery: "test query expanded",
+        expandedQueries: ["test query expanded"],
         intent: "research",
         reranked: true,
       });
       expect(metadata).toEqual({
         aiMode: "full",
-        processingTime: 1000,
+        processingTimeMs: 1000,
         phaseTimes: { cache: 50, search: 200 },
         cacheHit: true,
-        expandedQuery: "test query expanded",
+        expandedQueries: ["test query expanded"],
         intent: "research",
         reranked: true,
       });
@@ -93,7 +93,7 @@ describe("response-builder", () => {
         aiMode: "expand",
         cacheHit: false,
       });
-      expect(metadata.processingTime).toBeUndefined();
+      expect(metadata.processingTimeMs).toBeUndefined();
       expect(metadata.intent).toBeUndefined();
     });
 

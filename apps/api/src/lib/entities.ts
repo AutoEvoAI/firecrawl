@@ -174,12 +174,19 @@ export type SearchResultType = "web" | "images" | "news";
 
 export interface AIMetadata {
   aiMode?: string;
-  processingTime?: number;
+  processingTimeMs?: number;
   phaseTimes?: Record<string, number>;
   cacheHit?: boolean;
-  expandedQuery?: string;
+  expandedQueries?: string[];
   intent?: string;
+  confidence?: number;
+  firecrawlCategories?: string[];
+  searxngCategories?: string[];
+  searxngEngines?: string[];
+  timeRange?: string | null;
   reranked?: boolean;
+  rerankModel?: string;
+  totalCandidates?: number;
 }
 
 export interface SearchV2Response {

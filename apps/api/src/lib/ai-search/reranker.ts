@@ -39,7 +39,7 @@ interface JinaRerankResponse {
 async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  operation: string
+  operation: string,
 ): Promise<T> {
   let timeoutId: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -66,7 +66,9 @@ async function rerankWithJina(
   results: WebSearchResult[],
   topK: number = 10,
 ): Promise<WebSearchResult[]> {
-  const endpoint = config.AI_SEARCH_RERANK_ENDPOINT || "https://api.jina.ai/v1/rerank";
+  // Use the standard Jina rerank endpoint
+  const endpoint =
+    config.AI_SEARCH_RERANK_ENDPOINT || "https://api.jina.ai/v1/rerank";
   const apiKey = config.AI_SEARCH_RERANK_API_KEY;
   const modelName = config.AI_SEARCH_RERANK_MODEL || "jina-reranker-v3";
 
@@ -97,7 +99,10 @@ async function rerankWithJina(
   );
 
   if (!response.ok) {
-    throw new Error(`Jina rerank API failed: ${response.status} ${response.statusText}`);
+    const errorBody = await response.text().catch(() => "Unknown error");
+    throw new Error(
+      `Jina rerank API failed: ${response.status} ${response.statusText} - ${errorBody}`,
+    );
   }
 
   const data = (await response.json()) as JinaRerankResponse;
@@ -153,8 +158,17 @@ Return a JSON array of result indices in order of relevance (most relevant first
 
   // Reorder results based on indices
   const reranked = object.rankedIndices
-    .map((i: number) => results[i - 1])
-    .filter((r: WebSearchResult) => r !== undefined);
+    .map((i: number, index: number) => {
+      const result = results[i - 1];
+      if (result) {
+        return {
+          ...result,
+          relevanceScore: Math.max(0, 1 - index / object.rankedIndices.length),
+        };
+      }
+      return undefined;
+    })
+    .filter(r => r !== undefined) as WebSearchResult[];
 
   // If reranking failed, return original results
   if (reranked.length === 0) {
@@ -182,11 +196,12 @@ export async function rerankResults(
       return [];
     }
 
-    const provider = config.AI_SEARCH_RERANK_PROVIDER || "jina";
+    const provider = config.AI_SEARCH_RERANK_PROVIDER;
 
     if (provider === "jina") {
       return await rerankWithJina(query, results, topK);
     } else {
+      // Use LLM-based reranking for other providers (openai, ollama, etc.)
       return await rerankWithLLM(query, results, topK);
     }
   } catch (error) {
