@@ -67,7 +67,23 @@ setSentryServiceTag("api");
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({ limit: "10mb" }));
 
-app.use(cors()); // Add this line to enable CORS
+const corsOptions = {
+  origin: (origin, callback) => {
+    const allowedOrigins = (process.env.CORS_HOST || "")
+      .split(",")
+      .filter(Boolean);
+    if (!origin) {
+      return callback(null, false);
+    }
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 app.use(responseTime());
 
