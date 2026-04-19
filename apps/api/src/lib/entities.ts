@@ -115,34 +115,6 @@ export class SearchResult {
   }
 }
 
-interface ImageSearchResult {
-  title?: string;
-  imageUrl?: string;
-  imageWidth?: number;
-  imageHeight?: number;
-  url?: string;
-  position?: number;
-  answer?: string;
-}
-
-interface NewsSearchResult {
-  title?: string;
-  url?: string;
-  snippet?: string;
-  date?: string;
-  imageUrl?: string;
-  position?: number;
-  category?: string;
-  // Scraped content fields
-  markdown?: string;
-  html?: string;
-  rawHtml?: string;
-  links?: string[];
-  screenshot?: string;
-  metadata?: Record<string, any>;
-  answer?: string;
-}
-
 export interface WebSearchResult {
   url: string;
   title: string;

@@ -25,15 +25,30 @@ export async function dashboardAuthMiddleware(
   next: NextFunction,
 ) {
   try {
+    let token: string | null = null;
+
+    // Try to get token from Authorization header first
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid authorization header" });
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
     }
 
-    const token = authHeader.substring(7);
+    // If no Bearer token, try to get from cookie
+    if (!token && req.cookies && req.cookies.session) {
+      token = req.cookies.session;
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        error: "Missing or invalid authorization header or session cookie",
+      });
+    }
 
     // Verify JWT with Supabase
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
     if (error || !user) {
       return res.status(401).json({ error: "Invalid token" });
@@ -89,13 +104,11 @@ export async function dashboardAuthMiddleware(
         .eq("id", newOrg.id);
 
       // Add user to user_teams
-      const { error: addUserError } = await supabase
-        .from("user_teams")
-        .insert({
-          user_id: user.id,
-          team_id: newTeam.id,
-          role: "owner",
-        });
+      const { error: addUserError } = await supabase.from("user_teams").insert({
+        user_id: user.id,
+        team_id: newTeam.id,
+        role: "owner",
+      });
 
       if (addUserError) {
         console.error("Failed to add user to team:", addUserError);
@@ -103,12 +116,10 @@ export async function dashboardAuthMiddleware(
       }
 
       // Create user record in users table (without team_id as it doesn't exist in the schema)
-      const { error: createUserError } = await supabase
-        .from("users")
-        .insert({
-          id: user.id,
-          email: user.email,
-        });
+      const { error: createUserError } = await supabase.from("users").insert({
+        id: user.id,
+        email: user.email,
+      });
 
       if (createUserError && createUserError.code !== "23505") {
         // Ignore duplicate key errors

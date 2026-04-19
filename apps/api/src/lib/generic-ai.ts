@@ -83,7 +83,7 @@ let searchRerankModelInstance: any = null;
  * This is isolated from the global MODEL_NAME configuration
  * Uses AI_SEARCH_LLM_* variables (same as preprocessor)
  */
-export function getSearchExpandModel() {
+function getSearchExpandModel() {
   if (searchExpandModelInstance) {
     return searchExpandModelInstance;
   }
