@@ -99,10 +99,14 @@ export async function executeSearch(
   } = context;
 
   const startTime = Date.now();
+  const perfLog = (step: string, duration: number) => {
+    logger.info(`PERF [${step}]: ${duration}ms`);
+  };
   const num_results_buffer = Math.floor(limit * 2);
 
   // Cache check (skip for ZDR requests)
   const isZDR = options.enterprise?.includes("zdr");
+  const cacheCheckStart = Date.now();
   if (config.AI_SEARCH_CACHE_ENABLED && !isZDR) {
     const cacheKey = getCacheKey(query, aiMode, {
       limit,
@@ -115,6 +119,7 @@ export async function executeSearch(
       sources: sources.map(s => s.type),
     });
     const cachedResult = await getSearchResult(cacheKey);
+    perfLog("cache_check", Date.now() - cacheCheckStart);
     if (cachedResult) {
       try {
         const parsedResult = JSON.parse(cachedResult) as SearchV2Response;
@@ -182,10 +187,12 @@ export async function executeSearch(
     try {
       if (shouldExpandQuery(aiMode) || shouldClassifyIntent(aiMode)) {
         logger.info("AI Search - Running AI preprocessing", { aiMode });
+        const preprocessStart = Date.now();
         const preprocessResult = await preprocessQuery(
           query,
           options.lang || "en",
         );
+        perfLog("ai_preprocessing", Date.now() - preprocessStart);
         logger.info("AI Search - Preprocessing result", {
           hasExpandedQueries: !!preprocessResult.expandedQueries,
           expandedQueryCount: preprocessResult.expandedQueries?.length,
@@ -248,6 +255,7 @@ export async function executeSearch(
     if (expandedQueries.length > 0) {
       // Limit to max 3 expanded queries
       const limitedExpandedQueries = expandedQueries.slice(0, 3);
+      const expandedSearchStart = Date.now();
       const expandedPromises = limitedExpandedQueries.map(q =>
         search({
           query: q,
@@ -270,7 +278,9 @@ export async function executeSearch(
     }
 
     // Wait for all searches
+    const searchStart = Date.now();
     const results = await Promise.all(searchPromises);
+    perfLog("all_searches", Date.now() - searchStart);
 
     // Aggregate results from original and expanded queries
     const allWebResults: any[] = [];
@@ -311,9 +321,11 @@ export async function executeSearch(
     if (allWebResults.length > 0) {
       searchResponse.web = allWebResults;
     }
+    perfLog("result_aggregation", Date.now() - searchStart);
   } else {
     // Non-AI path
     logger.info("Searching for results");
+    const searchStart = Date.now();
     searchResponse = (await search({
       query: searchQuery,
       logger,
@@ -365,11 +377,13 @@ export async function executeSearch(
       webCount: searchResponse.web.length,
       dedupEnabled: config.AI_SEARCH_DEDUP_ENABLED,
     });
+    const aggregateStart = Date.now();
     const totalCandidates = searchResponse.web.length;
     searchResponse.web = aggregateResults(
       searchResponse.web,
       config.AI_SEARCH_MAX_RESULTS_FOR_RERANK,
     );
+    perfLog("aggregation", Date.now() - aggregateStart);
     if (aiMetadata) {
       aiMetadata.totalCandidates = totalCandidates;
     }
@@ -386,11 +400,13 @@ export async function executeSearch(
     shouldRerank(aiMode)
   ) {
     logger.info("AI Search - Applying AI reranking");
+    const rerankStart = Date.now();
     searchResponse.web = await rerankResults(
       query,
       searchResponse.web,
       limit, // Ask reranker for final requested limit
     );
+    perfLog("reranking", Date.now() - rerankStart);
   }
 
   let totalResultsCount = 0;
@@ -415,6 +431,23 @@ export async function executeSearch(
               : Math.max(0, 1 - index / (searchResponse.web?.length || 1)),
       }));
     }
+    // Clean up internal fields from final response
+    searchResponse.web = searchResponse.web.map(result => {
+      const {
+        searxngScore,
+        engines,
+        _query,
+        _queryIndex,
+        publishedDate,
+        ...cleanResult
+      } = result;
+      // Only include publishedDate if it has a value
+      const finalResult = { ...cleanResult };
+      if (publishedDate) {
+        (finalResult as any).publishedDate = publishedDate;
+      }
+      return finalResult;
+    });
     totalResultsCount += searchResponse.web.length;
   }
 
@@ -432,6 +465,22 @@ export async function executeSearch(
         ),
       }));
     }
+    // Clean up internal fields from final response
+    searchResponse.images = searchResponse.images.map(result => {
+      const {
+        searxngScore,
+        engines,
+        _query,
+        _queryIndex,
+        publishedDate,
+        ...cleanResult
+      } = result;
+      const finalResult = { ...cleanResult };
+      if (publishedDate) {
+        (finalResult as any).publishedDate = publishedDate;
+      }
+      return finalResult;
+    });
     totalResultsCount += searchResponse.images.length;
   }
 
@@ -449,6 +498,22 @@ export async function executeSearch(
         ),
       }));
     }
+    // Clean up internal fields from final response
+    searchResponse.news = searchResponse.news.map(result => {
+      const {
+        searxngScore,
+        engines,
+        _query,
+        _queryIndex,
+        publishedDate,
+        ...cleanResult
+      } = result;
+      const finalResult = { ...cleanResult };
+      if (publishedDate) {
+        (finalResult as any).publishedDate = publishedDate;
+      }
+      return finalResult;
+    });
     totalResultsCount += searchResponse.news.length;
   }
 
@@ -461,6 +526,7 @@ export async function executeSearch(
     scrapeOptions?.formats && scrapeOptions.formats.length > 0;
 
   if (shouldScrape && scrapeOptions) {
+    const scrapeStart = Date.now();
     const itemsToScrape = getItemsToScrape(searchResponse, flags);
 
     if (itemsToScrape.length > 0) {
@@ -490,6 +556,7 @@ export async function executeSearch(
         allDocsWithCostTracking,
       );
       scrapeCredits = calculateScrapeCredits(allDocsWithCostTracking);
+      perfLog("scraping", Date.now() - scrapeStart);
     }
   }
 
@@ -558,6 +625,7 @@ export async function executeSearch(
 
   // Store result in cache (skip for ZDR requests)
   if (config.AI_SEARCH_CACHE_ENABLED && !isZDR) {
+    const cacheStoreStart = Date.now();
     try {
       const cacheKey = getCacheKey(query, aiMode, {
         limit,
@@ -572,12 +640,14 @@ export async function executeSearch(
       const ttl = getTTLByMode(aiMode, options.tbs);
       await setSearchResult(cacheKey, JSON.stringify(searchResponse), ttl);
       logger.info("Search result stored in cache", { ttl, aiMode });
+      perfLog("cache_store", Date.now() - cacheStoreStart);
     } catch (error) {
       logger.warn("Failed to store search result in cache", { error });
       // Continue even if cache storage fails
     }
   }
 
+  perfLog("total_execute", Date.now() - startTime);
   return {
     response: searchResponse,
     totalResultsCount,

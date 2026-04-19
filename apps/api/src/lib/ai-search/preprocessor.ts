@@ -134,11 +134,19 @@ export async function classifyIntent(
   timeRange?: string | null;
   reasoning?: string;
 }> {
+  const startTime = Date.now();
+  const perfLog = (step: string, duration: number) => {
+    logger.info(`PERF [classifyIntent:${step}]: ${duration}ms`);
+  };
+
   // Check cache first
+  const cacheCheckStart = Date.now();
   const cacheKey = getPreprocessCacheKey("intent", query, lang);
   const cachedResult =
     await getCachedResult<z.infer<typeof intentSchema>>(cacheKey);
+  perfLog("cache_check", Date.now() - cacheCheckStart);
   if (cachedResult) {
+    perfLog("total", Date.now() - startTime);
     return cachedResult;
   }
 
@@ -154,11 +162,13 @@ Classify this search query: "${query}"`,
       maxRetries: 1,
     };
 
+    const llmStart = Date.now();
     const result = await withTimeout(
       generateObject(aiConfig),
       config.AI_SEARCH_LLM_TIMEOUT,
       "Intent classification",
     );
+    perfLog("llm_call", Date.now() - llmStart);
 
     if (!result.object) {
       throw new Error("Failed to generate intent classification result");
@@ -167,11 +177,15 @@ Classify this search query: "${query}"`,
     const classificationResult = result.object as any;
 
     // Cache the result
+    const cacheStoreStart = Date.now();
     await setCachedResult(cacheKey, classificationResult, 3600); // 1 hour TTL
+    perfLog("cache_store", Date.now() - cacheStoreStart);
+    perfLog("total", Date.now() - startTime);
 
     return classificationResult;
   } catch (error) {
     logger.error("Intent classification failed", { error, query });
+    perfLog("total", Date.now() - startTime);
     // Fallback to informational intent
     return {
       intent: "informational",
@@ -192,10 +206,18 @@ export async function expandQuery(
   query: string,
   lang: string = "en",
 ): Promise<string[]> {
+  const startTime = Date.now();
+  const perfLog = (step: string, duration: number) => {
+    logger.info(`PERF [expandQuery:${step}]: ${duration}ms`);
+  };
+
   // Check cache first
+  const cacheCheckStart = Date.now();
   const cacheKey = getPreprocessCacheKey("expansion", query, lang);
   const cachedResult = await getCachedResult<string[]>(cacheKey);
+  perfLog("cache_check", Date.now() - cacheCheckStart);
   if (cachedResult) {
+    perfLog("total", Date.now() - startTime);
     return cachedResult;
   }
 
@@ -211,11 +233,13 @@ Expand this search query: "${query}"`,
       maxRetries: 1,
     };
 
+    const llmStart = Date.now();
     const result = await withTimeout(
       generateObject(aiConfig),
       config.AI_SEARCH_LLM_TIMEOUT,
       "Query expansion",
     );
+    perfLog("llm_call", Date.now() - llmStart);
 
     if (!result.object) {
       throw new Error("Failed to generate query expansion result");
@@ -227,11 +251,15 @@ Expand this search query: "${query}"`,
     }
 
     // Cache the result
+    const cacheStoreStart = Date.now();
     await setCachedResult(cacheKey, queries, 3600); // 1 hour TTL
+    perfLog("cache_store", Date.now() - cacheStoreStart);
+    perfLog("total", Date.now() - startTime);
 
     return queries;
   } catch (error) {
     logger.error("Query expansion failed", { error, query });
+    perfLog("total", Date.now() - startTime);
     // Fallback to original query only
     return [query];
   }
@@ -255,11 +283,17 @@ export async function preprocessQuery(
   timeRange?: string | null;
   expandedQueries: string[];
 }> {
+  const startTime = Date.now();
+  const perfLog = (step: string, duration: number) => {
+    logger.info(`PERF [preprocessQuery:${step}]: ${duration}ms`);
+  };
+
   // Parallel execution of intent classification and query expansion
   const [intentResult, expandedQueries] = await Promise.all([
     classifyIntent(query, lang),
     expandQuery(query, lang),
   ]);
+  perfLog("total", Date.now() - startTime);
 
   return {
     intent: intentResult.intent,
